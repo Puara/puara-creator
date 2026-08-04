@@ -22,8 +22,8 @@ corpus/
       take_0001.meta.json                per-take status and stream health (§5)
       take_0002.jsonl
       take_0002.meta.json
-      ambient_0001.jsonl                 negative material, same line format
-      ambient_0001.meta.json
+      ambient_0003.jsonl                 negative material, same line format
+      ambient_0003.meta.json
 ```
 
 `session_id` is `YYYYMMDD-HHMMSS_<subject>_<device>`, e.g. `20260803-141200_S01_tstick-520`. It is
@@ -33,6 +33,9 @@ program may parse it for the time.
 Takes are stored as separate files rather than as one stream per session. This bounds file size,
 allows a bad take to be deleted without rewriting anything, permits parallel processing, and keeps
 each file small enough to open in an editor.
+
+Take numbers are unique within a session across both kinds, so that a `take` field in an event
+identifies exactly one file; the prefix records the kind rather than a second numbering.
 
 ## 2. `meta.json`
 
@@ -180,7 +183,7 @@ new event, not an edit.
 
 ```json
 {"t":884213440.000000,"kind":"session_start"}
-{"t":884213441.000000,"kind":"take_start","take":1,"target_class":"jab"}
+{"t":884213441.000000,"kind":"take_start","take":1,"take_kind":"cued","target_class":"jab"}
 {"t":884213445.000000,"kind":"cue","take":1,"index":0,"modality":"haptic"}
 {"t":884213445.331200,"kind":"label","take":1,"class":"jab","t_on":884213445.3312,"t_off":884213445.4410,"source":"segmenter","confidence":0.9}
 {"t":884213449.000000,"kind":"cue","take":1,"index":1,"modality":"haptic"}
@@ -192,7 +195,7 @@ new event, not an edit.
 | `kind` | Fields | Meaning |
 | --- | --- | --- |
 | `session_start`, `session_end` | — | Session boundaries |
-| `take_start` | `take`, `target_class`, `kind` | A take begins; `kind` is `cued` or `ambient` |
+| `take_start` | `take`, `target_class`, `take_kind` | A take begins; `take_kind` is `cued` or `ambient`. It is not called `kind`, which every event already uses as its own discriminator |
 | `take_end` | `take`, `reps_completed` | A take ends normally |
 | `take_abort` | `take`, `reason` | A take ended abnormally |
 | `cue` | `take`, `index`, `modality` | A cue stimulus was emitted |

@@ -66,6 +66,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/puara_creator"]
+exclude = ["backups/", "*.backupclaude*"]
 
 [tool.ruff]
 line-length = 100

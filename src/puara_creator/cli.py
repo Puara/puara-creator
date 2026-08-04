@@ -4,15 +4,15 @@
 # Copyright (C) 2026 Eduardo Meneses
 """Command-line interface.
 
-This module fixes the command surface specified in docs/SPEC_V1.md §2. The signatures
-below are the contract; the bodies are not implemented yet. Every option here has a
-normative description in the specification, and the two must be changed together.
+This module fixes the command surface specified in docs/SPEC_V1.md §2. The signatures are
+the contract, and a change here means a change to the specification in the same commit.
+`record` is implemented; the rest are not yet.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 
@@ -28,7 +28,7 @@ app = typer.Typer(
 _NOT_IMPLEMENTED = (
     "Not implemented. puara-creator is pre-alpha: the specification is complete and the "
     "command surface is frozen, but no component has been written yet. "
-    "See docs/ROADMAP.md and docs/SESSION_HANDOFF.md §5."
+    "See docs/ROADMAP.md and docs/SESSION_HANDOFF.md §6."
 )
 
 
@@ -38,9 +38,7 @@ def _todo(command: str) -> None:
 
 @app.callback()
 def main(
-    version: Annotated[
-        bool, typer.Option("--version", help="Print the version and exit.")
-    ] = False,
+    version: Annotated[bool, typer.Option("--version", help="Print the version and exit.")] = False,
 ) -> None:
     if version:
         typer.echo(f"puara-creator {__version__}")
@@ -55,7 +53,7 @@ def record(
         str, typer.Option(help="Target gesture class, or 'ambient' for negative material.")
     ],
     in_port: Annotated[int, typer.Option(help="UDP port to listen on.")] = 8000,
-    bind: Annotated[str, typer.Option(help="Interface to bind.")] = "0.0.0.0",  # noqa: S104
+    bind: Annotated[str, typer.Option(help="Interface to bind.")] = "0.0.0.0",
     corpus: Annotated[Path, typer.Option(help="Corpus root directory.")] = Path("corpus"),
     schema: Annotated[
         Path | None, typer.Option(help="Namespace schema TOML. Inferred when omitted.")
@@ -67,10 +65,64 @@ def record(
     cue_out: Annotated[
         str | None, typer.Option(help="OSC target for the cue signal, HOST:PORT.")
     ] = None,
+    cue_modality: Annotated[str, typer.Option(help="haptic, audio, visual, or none.")] = "audio",
+    cue_seed: Annotated[int, typer.Option(help="Seed for cue jitter; recorded in metadata.")] = 0,
+    split: Annotated[
+        str, typer.Option(help="train, val, or test. Assigned here, never later.")
+    ] = "train",
+    infer_seconds: Annotated[
+        float, typer.Option(help="Listen this long to infer a schema when none is supplied.")
+    ] = 3.0,
+    handedness: Annotated[str | None, typer.Option(help="Subject handedness.")] = None,
+    experience: Annotated[str | None, typer.Option(help="Subject experience level.")] = None,
+    consent_ref: Annotated[
+        str | None, typer.Option(help="Reference to the signed consent.")
+    ] = None,
+    model: Annotated[str | None, typer.Option(help="Device model.")] = None,
+    firmware: Annotated[str | None, typer.Option(help="Device firmware version.")] = None,
+    firmware_hash: Annotated[str | None, typer.Option(help="Device firmware hash.")] = None,
+    transport: Annotated[str | None, typer.Option(help="wifi, usb, serial, or ethernet.")] = None,
+    nominal_rate: Annotated[float | None, typer.Option(help="Nominal sample rate in Hz.")] = None,
     monitor: Annotated[bool, typer.Option(help="Live health display.")] = True,
 ) -> None:
     """Capture an OSC session into the corpus."""
-    _todo("record")
+    from puara_creator.record_session import RecordOptions, run_record
+
+    run_record(
+        RecordOptions(
+            subject=subject,
+            device=device,
+            gesture=gesture,
+            in_port=in_port,
+            bind=bind,
+            corpus=corpus,
+            schema=schema,
+            cue=cue,
+            cue_jitter=cue_jitter,
+            count_in=count_in,
+            reps=reps,
+            cue_out=cue_out,
+            cue_modality=cue_modality,
+            cue_seed=cue_seed,
+            split=split,
+            infer_seconds=infer_seconds,
+            subject_meta=_compact(
+                handedness=handedness, experience=experience, consent_ref=consent_ref
+            ),
+            device_meta=_compact(
+                model=model,
+                firmware_version=firmware,
+                firmware_hash=firmware_hash,
+                transport=transport,
+                nominal_rate_hz=nominal_rate,
+            ),
+            monitor=monitor,
+        )
+    )
+
+
+def _compact(**fields: Any) -> dict[str, Any]:
+    return {key: value for key, value in fields.items() if value is not None}
 
 
 @app.command()
@@ -98,7 +150,9 @@ def score(
     listen: Annotated[int, typer.Option(help="Port on which detections are received.")] = 9001,
     tolerance: Annotated[float, typer.Option(help="Match window in seconds.")] = 0.25,
     split: Annotated[str, typer.Option(help="train, val, or test.")] = "train",
-    label_source: Annotated[str, typer.Option(help="Label provenance to score against.")] = "segmenter",
+    label_source: Annotated[
+        str, typer.Option(help="Label provenance to score against.")
+    ] = "segmenter",
     warmup: Annotated[float, typer.Option(help="Seconds discarded at each take start.")] = 2.0,
     calibrate: Annotated[bool, typer.Option(help="Measure loopback transport latency.")] = True,
     unlock_holdout: Annotated[
@@ -107,9 +161,13 @@ def score(
     include_unhealthy: Annotated[
         bool, typer.Option(help="Include takes flagged health:fail.")
     ] = False,
-    dut_version: Annotated[str | None, typer.Option(help="Version string recorded in the report.")] = None,
+    dut_version: Annotated[
+        str | None, typer.Option(help="Version string recorded in the report.")
+    ] = None,
     report: Annotated[Path | None, typer.Option(help="Write an HTML report here.")] = None,
-    json_out: Annotated[Path | None, typer.Option("--json", help="Write results JSON here.")] = None,
+    json_out: Annotated[
+        Path | None, typer.Option("--json", help="Write results JSON here.")
+    ] = None,
 ) -> None:
     """Evaluate a descriptor under test against the corpus."""
     _todo("score")
@@ -149,7 +207,9 @@ def convert(
 def ui(
     corpus: Annotated[Path, typer.Option(help="Corpus root directory.")] = Path("corpus"),
     port: Annotated[int, typer.Option(help="HTTP port.")] = 8420,
-    bind: Annotated[str, typer.Option(help="Interface to bind; loopback by default.")] = "127.0.0.1",
+    bind: Annotated[
+        str, typer.Option(help="Interface to bind; loopback by default.")
+    ] = "127.0.0.1",
 ) -> None:
     """Serve the local web interface."""
     _todo("ui")

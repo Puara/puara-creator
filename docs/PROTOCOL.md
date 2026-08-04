@@ -46,7 +46,8 @@ The protocol mitigates each of these rather than ignoring them:
   written as `source: "aligned"`.
 - The cue is delivered **haptically at the instrument** when the hardware allows, or audibly,
   never visually. A visual cue adds display latency and eye-to-hand delay to an error budget that
-  is already the dominant term.
+  is already the dominant term. When the instrument is a phone through `puara-server`,
+  `navigator.vibrate()` provides this directly; see [`PUARA_SERVER.md`](PUARA_SERVER.md) §4.
 - `--cue-jitter` adds uniform randomness to the cue interval. Jitter degrades anticipation, which
   costs a little labelling precision and buys a corpus that is less tempo-locked. Use it for at
   least one take per session.

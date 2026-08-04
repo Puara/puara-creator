@@ -59,8 +59,11 @@ approach will not be enough, is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md
 
 ## Status
 
-**Pre-alpha.** The specification is complete and the interface is frozen; the implementation has
-not started. Documentation is the deliverable at this stage:
+**Pre-alpha.** The specification is complete and the command surface is frozen. `record` is
+implemented and tested end to end against a synthetic sender; `play`, `score`, `inspect`, `label`,
+`convert` and the web interface are specified but not yet written, and raise `NotImplementedError`.
+
+Documentation:
 
 | Document | Contents |
 | --- | --- |
@@ -69,6 +72,7 @@ not started. Documentation is the deliverable at this stage:
 | [`docs/FORMAT.md`](docs/FORMAT.md) | On-disk corpus format |
 | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) | Capture protocol — cueing, negatives, subject coverage |
 | [`docs/UI.md`](docs/UI.md) | User interface specification and screen mock-ups |
+| [`docs/PUARA_SERVER.md`](docs/PUARA_SERVER.md) | Recording from phones through `puara-server`, and the timestamp prerequisite |
 | [`docs/EVALUATION.md`](docs/EVALUATION.md) | Metrics and methodological discipline |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | v1 → v3 |
 | [`docs/DESIGN_NOTES.md`](docs/DESIGN_NOTES.md) | Rejected options, prior art, known risks |
@@ -84,19 +88,36 @@ cd puara-creator
 uv sync
 ```
 
-## Usage sketch
+## Recording
 
 ```bash
-# Capture a session: listen for OSC on :8000, cue a gesture every 4 s
-puara-creator record --subject S01 --device tstick-520 --cue 4.0 --gesture jab
+# Phones through puara-server, using the shipped namespace schema
+puara-creator record \
+  --subject S01 --device phone-1 --gesture jab \
+  --schema schemas/namespace/puara-audience.toml \
+  --cue 4.0 --count-in 3 --reps 20 --split train
+```
 
-# Replay take 3 to a descriptor listening on :9000
-puara-creator play corpus/20260803-141200_S01_tstick-520 --take 3 --target 127.0.0.1:9000
+`space` starts and stops a take, `a` starts an ambient take, `x` marks the last take bad, `r`
+redoes it, `n` adds a note, `q` ends the session. Stream health is on screen throughout, and so is
+the cued-to-ambient ratio, because too little negative material is the most common way to record an
+unusable corpus.
 
-# Score a descriptor under test against the whole corpus
+No hardware is needed to try it — `tools/fake_phone.py` emits the same namespace:
+
+```bash
+python tools/fake_phone.py --port 8000 --duration 30 --bridge-tick 30 --timestamps
+```
+
+Before recording through `puara-server`, read [`docs/PUARA_SERVER.md`](docs/PUARA_SERVER.md): the
+bridge flushes OSC on a 30 Hz timer, which replaces sample times with tick times unless the
+timestamp toggle is on. The recorder detects the pattern and says so, but the fix is upstream.
+
+## Planned
+
+```bash
+puara-creator play corpus/20260803-141200_S01_phone-1 --take 3 --target 127.0.0.1:9000
 puara-creator score corpus/ --dut osc://127.0.0.1:9000 --class jab --report report.html
-
-# Everything above, with plots, in the browser
 puara-creator ui
 ```
 

@@ -72,35 +72,43 @@ can edit before a concert. The reasoning and the escape hatch are in `docs/DESIG
 | Python 3.12 with `uv`; FastAPI plus one HTML page, no build step | `SPEC_V1.md` §1, `UI.md` §5 |
 | AGPL-3.0 for the tool, with an exception for generated output | `LICENSING.md` |
 
-## 4. Open questions
+## 4. Resolved on 4 August 2026
+
+- **The output licence exception is confirmed** and is now at the head of `LICENSE`. Generated
+  descriptors, corpora, and reports are unencumbered by the AGPL.
+- **The first instrument is a phone through `puara-server`, not a T-Stick.** This moves the
+  timestamp prerequisite from ESP32 firmware to the `puara-bridge`, and it raises a problem that
+  Wi-Fi jitter alone did not: the bridge flushes its OSC queue at `bridgeTick`, default 30 Hz, so
+  arrival timestamps are quantised onto a 33 ms grid and sample order within a tick is the queue's,
+  not the phone's. The fix is a `timestamps` toggle on `puara-server` at level `bridge` first and
+  level `device` later. Specified in full in `docs/PUARA_SERVER.md`.
+- **The haptic cue question is answered by the same change.** A phone has `navigator.vibrate()`, so
+  the cue can be delivered in the performer's hand rather than on a screen — better than the T-Stick
+  offered. It needs a `/puara/cue` path through the bridge to the player client.
+
+## 5. Open questions
 
 These were raised and not resolved. They block nothing in v1 except where noted.
 
-1. **Firmware support for device-side sequence numbers and timestamps.** Without them, every latency
-   figure includes an unquantified transport term. This is a `puara-module` change and a prerequisite
-   for trustworthy latency measurement, not an optimisation. Blocking for meaningful latency results;
-   not blocking for the v1 implementation.
-2. **The output licence exception.** Proposed in `LICENSING.md` and needing confirmation by the
-   copyright holders — SAT, IDMIL, and Edu — before the first release.
-3. **Whether the T-Stick can deliver a haptic cue.** The protocol prefers haptic or audible cueing
-   at the instrument over visual cueing, which adds display and eye-to-hand latency to the dominant
-   error term. If the hardware cannot, audible cueing from the workstation is the fallback.
-4. **Which gesture is the first target.** `jab` is used throughout the documentation as the running
+1. **Which gesture is the first target.** `jab` is used throughout the documentation as the running
    example because it is short enough to make the labelling problem obvious. A longer gesture would
    be an easier first target and would validate the pipeline with less labelling pressure.
-5. **Where the reference corpus is hosted.** Too large for the repository beyond a small example.
+2. **Where the reference corpus is hosted.** Too large for the repository beyond a small example.
    Candidates: Zenodo with a DOI, alongside a paper; or SAT infrastructure.
-6. **Whether v1 ships an ossia/score playback node.** It would make the loop usable inside the
+3. **Whether v1 ships an ossia/score playback node.** It would make the loop usable inside the
    environment where the descriptors already run, and `score-addon-puara` exists. Currently deferred
    to *Beyond* in the roadmap.
+4. **Whether the `gesture-tester` bridge becomes the first descriptor under test.** It already runs
+   the real C++ descriptors beside the JavaScript ports; teaching it `/pcr/detect` would turn that
+   comparison into a measured result. See `docs/PUARA_SERVER.md` §4.
 
-## 5. Next actions
+## 6. Next actions
 
 In order, each independently useful:
 
-1. **`record`, terminal only.** OSC listener, JSONL writer, session and take structure, health
-   metrics, cue engine, keyboard control. Verifiable against a synthetic OSC sender before any
-   hardware is involved.
+1. ~~**`record`, terminal only.**~~ **Done, 4 August 2026.** OSC listener, JSONL writer, session and
+   take structure, health metrics with batching detection, cue engine, keyboard control, and a
+   synthetic phone in `tools/fake_phone.py`. 39 tests, lint, format and types green.
 2. **`play`.** Deterministic replay with faithful inter-arrival timing. Verifiable by recording the
    replay and comparing the two streams.
 3. **`inspect`.** Health and coverage reporting over an existing corpus; makes the first two
@@ -114,7 +122,7 @@ In order, each independently useful:
 The web interface deliberately comes after the CLI, because the CLI is the contract and the
 interface constructs CLI invocations.
 
-## 6. Conventions carried from the conversation
+## 7. Conventions carried from the conversation
 
 - Documentation is written in Edu's voice and register: technical, precise, acronyms expanded on
   first use, problem-then-solution framing, explicit logical connectors, collaborators credited by

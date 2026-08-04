@@ -1,0 +1,44 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install
+        run: uv sync --all-extras
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Format
+        run: uv run ruff format --check .
+
+      - name: Types
+        run: uv run mypy
+
+      - name: Tests
+        run: uv run pytest -q
+
+      - name: Record against a synthetic phone
+        run: |
+          uv run python tools/fake_phone.py --port 9099 --duration 4 --bridge-tick 30 \
+            --timestamps --gesture-every 1 &
+          sleep 0.2
+          uv run puara-creator record \
+            --subject CI --device fake-phone --gesture jab \
+            --in-port 9099 --bind 127.0.0.1 --corpus /tmp/pcr-corpus \
+            --schema schemas/namespace/puara-audience.toml \
+            --cue 1.0 --count-in 1 --reps 2 --nominal-rate 100
+          test -s "$(find /tmp/pcr-corpus -name 'take_0001.jsonl')"
+          cat "$(find /tmp/pcr-corpus -name 'take_0001.meta.json')"

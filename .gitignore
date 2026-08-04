@@ -5,8 +5,10 @@
 CLAUDE.md
 CLAUDE.local.md
 .mcp.json
-*.backupclaude
+*.backupclaude*
 .backupclaude/
+backups/
+**/backups/
 
 # ---- recorded data -----------------------------------------------------------
 # Corpora contain movement data from identifiable people; publishing one is a

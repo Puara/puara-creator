@@ -61,9 +61,25 @@ Listens for OSC, writes a session directory, and optionally emits a cue schedule
 | `--cue-out` | *none* | OSC target for the cue signal, e.g. `192.168.1.50:8000`, so the instrument can buzz |
 | `--monitor` | `on` | Live health and sparkline display in the terminal |
 | `--health-fail` | see §6.2 | Health thresholds beyond which a take is auto-flagged |
+| `--split` | `train` | Split this session belongs to; assigned here and never changed later (§7) |
+| `--infer-seconds` | `3.0` | How long to listen before recording when no `--schema` is supplied |
+| `--cue-seed` | `0` | Seed for cue jitter, recorded in the metadata so a schedule is reproducible |
+| `--cue-modality` | `audio` | `haptic`, `audio`, `visual`, or `none`; recorded with every cue event |
+| `--handedness`, `--experience`, `--consent-ref` | *none* | Subject metadata (`FORMAT.md` §2) |
+| `--model`, `--firmware`, `--firmware-hash`, `--transport`, `--nominal-rate` | *none* | Device metadata |
 
-Interactive keys during recording: `space` start/stop take, `x` mark last take bad, `r` redo last
-take, `n` add a note, `q` end session.
+Interactive keys during recording: `space` start/stop take, `a` start an ambient take, `x` mark last
+take bad, `r` redo last take, `n` add a note, `q` end session.
+
+A take file begins at `take_start`, which is before the count-in completes. Count-in cues are
+recorded as `cue` events with negative `index` and `count_in: true`, so the settling period is
+identifiable without a separate convention and no data is discarded at capture time.
+
+Take numbers are unique within a session across both kinds, and the filename prefix records the
+kind: an ambient take numbered 3 is `takes/ambient_0003.jsonl`.
+
+When standard input is not a terminal the recorder starts one take immediately and runs until the
+cue schedule completes or it is interrupted, so that it is usable from a script.
 
 The recorder MUST write each datagram to disk before acknowledging it in the display, and MUST
 flush at least once per second, so that a crash costs at most one second of data.
@@ -181,6 +197,14 @@ the per-subject spread beside it.
 Per address, per take: message count, achieved rate, inter-arrival median, 95th percentile and
 maximum, count of gaps exceeding three nominal periods, count of out-of-order arrivals, and — when
 device sequence numbers are present — count of lost messages and loss rate.
+
+**Batching.** A sender that queues messages and flushes them on a timer delivers each burst within
+microseconds and then nothing until the next tick, which replaces the sample times with the tick
+times while leaving the achieved rate correct and losing nothing. The signature is a median
+inter-arrival below a quarter of the nominal period together with a maximum above two periods; a
+take showing it is flagged `batched: true` and warned, and the warning names the timestamp toggle
+of [`PUARA_SERVER.md`](PUARA_SERVER.md) §2 as the fix. When per-sample device timestamps are
+present the batching is harmless, and the report says so instead.
 
 ### 6.2 Default failure thresholds
 

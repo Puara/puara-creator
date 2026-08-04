@@ -1,3 +1,25 @@
+puara-creator is licensed under the GNU Affero General Public License, version 3
+or later. The full text of that licence follows this notice.
+
+Copyright (C) 2026 Societe des Arts Technologiques (SAT)
+Copyright (C) 2026 Input Devices and Music Interaction Laboratory (IDMIL),
+                   McGill University
+Copyright (C) 2026 Eduardo Meneses
+
+OUTPUT EXCEPTION
+
+  As a special exception, the copyright holders of puara-creator give
+  permission to use the output of running this program -- including generated
+  descriptor source code, recorded corpora, and evaluation reports -- without
+  restriction, and to license that output on any terms, notwithstanding the
+  terms of the GNU Affero General Public License that govern this program
+  itself. This exception does not apply to code from puara-creator that is
+  copied into the output beyond what is necessary to make the output function.
+
+  Confirmed by the copyright holders on 4 August 2026. See docs/LICENSING.md.
+
+--------------------------------------------------------------------------------
+
                     GNU AFFERO GENERAL PUBLIC LICENSE
                        Version 3, 19 November 2007
 

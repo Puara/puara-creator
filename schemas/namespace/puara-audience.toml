@@ -1,0 +1,127 @@
+# Namespace schema — puara-server /puara/audience, namespace 0.3.1 / 0.4.0
+#
+# Use with:  puara-creator record --schema schemas/namespace/puara-audience.toml
+#
+# `*` in an address matches the per-device index assigned by the soundworks
+# checkin plugin. Units and frames follow puara-server/docs/NAMESPACE.md and
+# differ from the T-Stick: gyroscope is degrees per second in devicemotion
+# alpha/beta/gamma order, not radians in x/y/z, and acceleration includes
+# gravity.
+#
+# sequence_field and timestamp_field are the argument indices added by the
+# `timestamps` toggle described in docs/PUARA_SERVER.md §2. They are ignored
+# when the toggle is off and the message arrives with the base arity.
+
+version = "0.4.0"
+source = "puara-server"
+notes = "Arrival timestamps are quantised to bridgeTick unless timestamps is bridge or device."
+
+# ---- raw streams -------------------------------------------------------------
+
+[[address]]
+address = "/puara/audience/*/accel"
+role = "acceleration"
+frame = "device"
+units = "m/s^2"
+arity = 3
+range = [-40.0, 40.0]
+rate_hz = 100
+gravity_included = true
+sequence_field = 3
+timestamp_field = 4
+
+[[address]]
+address = "/puara/audience/*/gyro"
+role = "angular_velocity"
+frame = "device"
+units = "deg/s"
+arity = 3
+range = [-2000.0, 2000.0]
+rate_hz = 100
+axis_order = "alpha,beta,gamma"
+sequence_field = 3
+timestamp_field = 4
+
+[[address]]
+address = "/puara/audience/*/orientation"
+role = "orientation_euler"
+frame = "world"
+units = "deg"
+arity = 3
+range = [-180.0, 360.0]
+rate_hz = 100
+axis_order = "alpha,beta,gamma"
+sequence_field = 3
+timestamp_field = 4
+
+[[address]]
+address = "/puara/audience/*/touch"
+role = "touch_array"
+units = "normalized"
+arity = 2
+range = [0.0, 1.0]
+rate_hz = 60
+notes = "Primary pointer only. Not sent between touches."
+event_rate = true
+
+[[address]]
+address = "/puara/audience/*/touch/count"
+role = "analog"
+units = "count"
+arity = 1
+event_rate = true
+
+# ---- descriptors computed on the phone ---------------------------------------
+# Emitted only when the value changes, so a fixed-rate health check would read
+# an idle phone as a dropout. event_rate suppresses that.
+
+[[address]]
+address = "/puara/audience/*/shake"
+role = "derived"
+units = "normalized"
+arity = 3
+event_rate = true
+notes = "Gravity-free acceleration energy per axis; exactly 0 when still."
+
+[[address]]
+address = "/puara/audience/*/jab"
+role = "derived"
+units = "m/s^2"
+arity = 3
+event_rate = true
+notes = "Latches the last detected span until another exceeds jabThreshold."
+
+[[address]]
+address = "/puara/audience/*/brush"
+role = "derived"
+units = "normalized"
+arity = 2
+event_rate = true
+
+[[address]]
+address = "/puara/audience/*/rub"
+role = "derived"
+units = "normalized"
+arity = 2
+event_rate = true
+
+# ---- events ------------------------------------------------------------------
+
+[[address]]
+address = "/puara/audience/*/tap"
+role = "button"
+arity = 1
+event_rate = true
+
+[[address]]
+address = "/puara/audience/*/region"
+role = "analog"
+units = "index"
+arity = 1
+event_rate = true
+
+[[address]]
+address = "/puara/audience/*/status"
+role = "button"
+arity = 1
+event_rate = true

@@ -22,7 +22,8 @@ same reason: a tool that infected the licence of its output would be unusable fo
 purpose. The intended purpose here is generating descriptors for `puara-gestures`, which is MIT
 licensed, and for instruments built by people who have no obligation to open their firmware.
 
-The following exception is therefore attached to the licence:
+The following exception is therefore attached to the licence, confirmed by the copyright holders on
+4 August 2026:
 
 > **Output exception.** As a special exception, the copyright holders of `puara-creator` give
 > permission to use the output of running this program — including generated descriptor source
@@ -34,9 +35,8 @@ The following exception is therefore attached to the licence:
 The trailing sentence is the standard qualification: templates and boilerplate emitted by the code
 generator carry the exception; wholesale copying of the tool's own source into a project does not.
 
-**Status:** this exception is proposed and requires confirmation by the copyright holders before the
-first release. Until it is confirmed and added to the header of `LICENSE`, treat the licensing of
-generated output as unsettled.
+**Status:** confirmed. The exception is in force and is reproduced at the head of
+[`LICENSE`](../LICENSE).
 
 ## Copyright
 
