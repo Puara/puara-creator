@@ -11,6 +11,7 @@ and never rewrites.
 
 from __future__ import annotations
 
+import base64
 import os
 from pathlib import Path
 from types import TracebackType
@@ -19,6 +20,29 @@ from typing import Any, Self
 import orjson
 
 from puara_creator.clock import monotonic_seconds
+
+#: Wrapper key for an OSC blob, which JSON has no type for. Replay reverses it.
+BLOB_KEY = "__blob_b64__"
+
+
+def encode_unjsonable(value: Any) -> Any:
+    """Represent OSC argument types that JSON has no encoding for.
+
+    Blobs become base64 under `BLOB_KEY` so that replay can reconstruct the exact bytes.
+    Anything else unknown becomes its string form, which loses the type but keeps the
+    line writable — a recorder that crashes on an unexpected argument type would lose the
+    whole take rather than one field.
+    """
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return {BLOB_KEY: base64.b64encode(bytes(value)).decode("ascii")}
+    return str(value)
+
+
+def decode_arg(value: Any) -> Any:
+    """Reverse `encode_unjsonable` for one argument."""
+    if isinstance(value, dict) and BLOB_KEY in value:
+        return base64.b64decode(value[BLOB_KEY])
+    return value
 
 
 class JsonlWriter:
@@ -33,7 +57,7 @@ class JsonlWriter:
         self.lines = 0
 
     def write(self, record: dict[str, Any]) -> None:
-        self._fh.write(orjson.dumps(record))
+        self._fh.write(orjson.dumps(record, default=encode_unjsonable))
         self._fh.write(b"\n")
         self.lines += 1
         now = monotonic_seconds()
@@ -66,7 +90,7 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
     """Write a JSON document, indented, atomically enough for a metadata file."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_bytes(orjson.dumps(payload, option=orjson.OPT_INDENT_2))
+    tmp.write_bytes(orjson.dumps(payload, option=orjson.OPT_INDENT_2, default=encode_unjsonable))
     tmp.replace(path)
 
 

@@ -59,8 +59,8 @@ approach will not be enough, is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md
 
 ## Status
 
-**Pre-alpha.** The specification is complete and the command surface is frozen. `record` is
-implemented and tested end to end against a synthetic sender; `play`, `score`, `inspect`, `label`,
+**Pre-alpha.** The specification is complete and the command surface is frozen. `record`, `play`,
+`label`, `inspect` and `score` are implemented and tested end to end against a synthetic sender;
 `convert` and the web interface are specified but not yet written, and raise `NotImplementedError`.
 
 Documentation:
@@ -113,11 +113,30 @@ Before recording through `puara-server`, read [`docs/PUARA_SERVER.md`](docs/PUAR
 bridge flushes OSC on a 30 Hz timer, which replaces sample times with tick times unless the
 timestamp toggle is on. The recorder detects the pattern and says so, but the fix is upstream.
 
+## The measurement loop
+
+```bash
+# Refine cue times into labels: a cue is a stimulus, a label is where the gesture is
+puara-creator label corpus/20260803-141200_S01_phone-1 --method segmenter
+
+# Coverage, health, and the warnings that decide whether the corpus is usable
+puara-creator inspect corpus/
+
+# Replay a take at a descriptor, bit-identical and timing-faithful
+puara-creator play corpus/20260803-141200_S01_phone-1 --take 1 --target 127.0.0.1:9000
+
+# Score a descriptor under test; examples/threshold_dut.py is the baseline to beat
+python examples/threshold_dut.py --listen 9000 --reply 127.0.0.1:9001 &
+puara-creator score corpus/ --dut osc://127.0.0.1:9000 --class jab --report report.html
+```
+
+The descriptor under test is an OSC endpoint, not a linked library, so the same scorer evaluates a
+C++ harness, an ossia/score patch, a Max abstraction, or the instrument itself with injected data.
+
 ## Planned
 
 ```bash
-puara-creator play corpus/20260803-141200_S01_phone-1 --take 3 --target 127.0.0.1:9000
-puara-creator score corpus/ --dut osc://127.0.0.1:9000 --class jab --report report.html
+puara-creator convert corpus/20260803-141200_S01_phone-1 --format parquet
 puara-creator ui
 ```
 

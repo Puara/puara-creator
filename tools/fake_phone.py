@@ -21,12 +21,56 @@ from __future__ import annotations
 
 import argparse
 import math
+import queue
 import random
+import socket
+import threading
 import time
 
+from pythonosc.osc_packet import OscPacket, ParseError
 from pythonosc.udp_client import SimpleUDPClient
 
 GRAVITY = 9.81
+
+
+class CueListener:
+    """Receives /puara/cue and reports the arrival of armed cues.
+
+    With this, the synthetic phone reacts to the cue schedule instead of running on its
+    own clock, so a recorded corpus has the cue-to-onset relationship that
+    docs/PROTOCOL.md §2 is about — including the reaction delay the labeller has to undo.
+    """
+
+    def __init__(self, port: int) -> None:
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._sock.bind(("127.0.0.1", port))
+        self._sock.settimeout(0.1)
+        self._stop = threading.Event()
+        self.cues: queue.SimpleQueue[float] = queue.SimpleQueue()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        self._thread.join(timeout=1.0)
+        self._sock.close()
+
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            try:
+                data, _ = self._sock.recvfrom(65535)
+            except (TimeoutError, OSError):
+                continue
+            try:
+                packet = OscPacket(data)
+            except ParseError:
+                continue
+            for timed in packet.messages:
+                params = list(timed.message.params)
+                armed = len(params) < 2 or bool(params[1])
+                if timed.message.address == "/puara/cue" and armed:
+                    self.cues.put(time.monotonic())
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -60,6 +104,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Delay the burst by this much after the period boundary, as a performer would.",
     )
     parser.add_argument("--jitter-ms", type=float, default=40.0, help="Spread of the reaction.")
+    parser.add_argument(
+        "--cue-in",
+        type=int,
+        default=0,
+        help="Listen for /puara/cue on this port and perform the gesture in reaction to it, "
+        "as a performer would. Overrides --gesture-every.",
+    )
     parser.add_argument("--loss", type=float, default=0.0, help="Fraction of samples to drop.")
     parser.add_argument("--seed", type=int, default=0)
     return parser
@@ -73,6 +124,10 @@ def main() -> None:
     period = 1.0 / args.rate
     tick = 1.0 / args.bridge_tick if args.bridge_tick > 0 else 0.0
     prefix = f"/puara/audience/{args.device_id}"
+
+    listener = CueListener(args.cue_in) if args.cue_in else None
+    if listener is not None:
+        print(f"reacting to /puara/cue on :{args.cue_in}")
 
     start = time.monotonic()
     next_sample = start
@@ -94,7 +149,12 @@ def main() -> None:
             continue
         next_sample += period
 
-        if args.gesture_every > 0 and elapsed >= next_burst and burst_at is None:
+        if listener is not None:
+            while not listener.cues.empty():
+                cue_at = listener.cues.get() - start
+                delay = (args.reaction_ms + rng.gauss(0.0, args.jitter_ms)) / 1000.0
+                burst_at = cue_at + max(0.0, delay)
+        elif args.gesture_every > 0 and elapsed >= next_burst and burst_at is None:
             delay = (args.reaction_ms + rng.gauss(0.0, args.jitter_ms)) / 1000.0
             burst_at = elapsed + max(0.0, delay)
             next_burst += args.gesture_every
@@ -140,6 +200,8 @@ def main() -> None:
 
     for address, values in pending:
         client.send_message(address, values)
+    if listener is not None:
+        listener.stop()
 
     print(
         f"sent {seq} samples over {args.duration:.0f} s to {args.host}:{args.port}, "

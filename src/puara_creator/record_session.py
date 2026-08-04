@@ -49,6 +49,7 @@ class RecordOptions:
     cue_seed: int = 0
     split: str = "train"
     infer_seconds: float = 3.0
+    idle_timeout_s: float = 5.0
     subject_meta: dict[str, Any] = field(default_factory=dict)
     device_meta: dict[str, Any] = field(default_factory=dict)
     monitor: bool = True
@@ -221,13 +222,29 @@ def _headless_loop(console: Console, recorder: Recorder, options: RecordOptions)
     signal.signal(signal.SIGTERM, _handle)
 
     kind = "ambient" if options.gesture == "ambient" or options.cue <= 0 else "cued"
-    console.print(f"[dim]stdin is not a terminal — recording one {kind} take[/]")
+    console.print(
+        f"[dim]stdin is not a terminal — recording one {kind} take; "
+        + (
+            "ends with the cue schedule"
+            if kind == "cued"
+            else f"ends after {options.idle_timeout_s:.0f} s without traffic"
+        )
+        + "[/]"
+    )
     recorder.start_take(kind)  # type: ignore[arg-type]
 
     import time
 
+    reason = "cue schedule completed"
     while not interrupted and not recorder.take_finished:
         time.sleep(0.05)
+        idle = recorder.idle_for()
+        if options.idle_timeout_s > 0 and idle is not None and idle > options.idle_timeout_s:
+            reason = f"no traffic for {options.idle_timeout_s:.0f} s"
+            break
+    if interrupted:
+        reason = "interrupted"
+    console.print(f"[dim]take ended: {reason}[/]")
     recorder.stop_take()
 
 
@@ -255,11 +272,12 @@ def _summary(console: Console, session: Session, recorder: Recorder) -> None:
         f"  cued {durations['cued']:.0f} s   ambient {durations['ambient']:.0f} s   "
         f"ratio {ratio:.2f}"
     )
-    if ratio < 1.0:
+    if durations["cued"] > 0 and ratio < 1.0:
         console.print(
-            "  [yellow]ambient material is below parity with cued material — the "
-            "false-positive rate measured from this session will be unreliable "
-            "(docs/PROTOCOL.md §3)[/]"
+            f"  [yellow]this session has {durations['ambient']:.0f} s of ambient material "
+            f"against {durations['cued']:.0f} s cued. Parity is measured per subject across "
+            f"the corpus, so record the balance before this subject leaves and check it with "
+            f"`puara-creator inspect` (docs/PROTOCOL.md §3)[/]"
         )
     if session.schema.inferred:
         console.print(

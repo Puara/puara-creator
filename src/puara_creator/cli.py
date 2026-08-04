@@ -73,6 +73,10 @@ def record(
     infer_seconds: Annotated[
         float, typer.Option(help="Listen this long to infer a schema when none is supplied.")
     ] = 3.0,
+    idle_timeout: Annotated[
+        float,
+        typer.Option(help="Headless only: end the take after this long without traffic. 0 waits."),
+    ] = 5.0,
     handedness: Annotated[str | None, typer.Option(help="Subject handedness.")] = None,
     experience: Annotated[str | None, typer.Option(help="Subject experience level.")] = None,
     consent_ref: Annotated[
@@ -86,39 +90,45 @@ def record(
     monitor: Annotated[bool, typer.Option(help="Live health display.")] = True,
 ) -> None:
     """Capture an OSC session into the corpus."""
-    from puara_creator.record_session import RecordOptions, run_record
+    from rich.console import Console
 
-    run_record(
-        RecordOptions(
-            subject=subject,
-            device=device,
-            gesture=gesture,
-            in_port=in_port,
-            bind=bind,
-            corpus=corpus,
-            schema=schema,
-            cue=cue,
-            cue_jitter=cue_jitter,
-            count_in=count_in,
-            reps=reps,
-            cue_out=cue_out,
-            cue_modality=cue_modality,
-            cue_seed=cue_seed,
-            split=split,
-            infer_seconds=infer_seconds,
-            subject_meta=_compact(
-                handedness=handedness, experience=experience, consent_ref=consent_ref
-            ),
-            device_meta=_compact(
-                model=model,
-                firmware_version=firmware,
-                firmware_hash=firmware_hash,
-                transport=transport,
-                nominal_rate_hz=nominal_rate,
-            ),
-            monitor=monitor,
-        )
+    from puara_creator.record_session import RecordError, RecordOptions, run_record
+
+    options = RecordOptions(
+        subject=subject,
+        device=device,
+        gesture=gesture,
+        in_port=in_port,
+        bind=bind,
+        corpus=corpus,
+        schema=schema,
+        cue=cue,
+        cue_jitter=cue_jitter,
+        count_in=count_in,
+        reps=reps,
+        cue_out=cue_out,
+        cue_modality=cue_modality,
+        cue_seed=cue_seed,
+        split=split,
+        infer_seconds=infer_seconds,
+        idle_timeout_s=idle_timeout,
+        subject_meta=_compact(
+            handedness=handedness, experience=experience, consent_ref=consent_ref
+        ),
+        device_meta=_compact(
+            model=model,
+            firmware_version=firmware,
+            firmware_hash=firmware_hash,
+            transport=transport,
+            nominal_rate_hz=nominal_rate,
+        ),
+        monitor=monitor,
     )
+    try:
+        run_record(options)
+    except RecordError as exc:
+        Console().print(f"[red]{exc}[/]")
+        raise typer.Exit(1) from exc
 
 
 def _compact(**fields: Any) -> dict[str, Any]:
@@ -137,9 +147,43 @@ def play(
         str | None, typer.Option("--filter", help="Comma-separated address globs to include.")
     ] = None,
     mark: Annotated[bool, typer.Option(help="Emit /pcr/take before each take.")] = True,
+    reset: Annotated[bool, typer.Option(help="Emit /pcr/reset before each take.")] = True,
 ) -> None:
     """Replay recorded takes as OSC, with faithful timing."""
-    _todo("play")
+    from rich.console import Console
+
+    from puara_creator.replay import ReplayOptions, replay_session
+
+    console = Console()
+    options = ReplayOptions(
+        target=target,
+        take=take,
+        rate=rate,
+        loop=loop,
+        prefix=prefix,
+        address_filter=address_filter,
+        mark=mark,
+        reset=reset,
+    )
+
+    def announce(_session: Any, tk: Any) -> None:
+        console.print(
+            f"[cyan]take {tk.number:03d}[/] {tk.kind} · {tk.target_class}  "
+            f"{tk.duration_s:.1f} s → {target}"
+        )
+
+    from puara_creator.read import CorpusError
+
+    try:
+        stats = replay_session(session, options, on_take=announce)
+    except CorpusError as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(1) from exc
+    median, p95 = stats.error_percentiles()
+    console.print(
+        f"[bold]{stats.takes} takes[/], {stats.messages} messages in {stats.wall_s:.1f} s"
+        + (f"   schedule error p50 {median:+.2f} ms  p95 {p95:+.2f} ms" if rate > 0 else "")
+    )
 
 
 @app.command()
@@ -170,7 +214,44 @@ def score(
     ] = None,
 ) -> None:
     """Evaluate a descriptor under test against the corpus."""
-    _todo("score")
+    from rich.console import Console
+
+    from puara_creator.read import CorpusError
+    from puara_creator.report import print_report, write_html_report
+    from puara_creator.scoring import ScoreError, ScoreOptions, run_score, write_json_report
+
+    console = Console()
+    options = ScoreOptions(
+        dut=dut,
+        gesture_class=gesture_class,
+        listen=listen,
+        tolerance_s=tolerance,
+        split=split,
+        label_source=label_source,
+        warmup_s=warmup,
+        calibrate=calibrate,
+        unlock_holdout=unlock_holdout,
+        include_unhealthy=include_unhealthy,
+        dut_version=dut_version,
+    )
+    if split == "test" and unlock_holdout:
+        console.print(
+            "[yellow]unlocking the test split — this consultation is being logged to "
+            "corpus/holdout_log.jsonl (docs/EVALUATION.md §6.2)[/]"
+        )
+    try:
+        result = run_score(corpus, options)
+    except (ScoreError, CorpusError) as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(2) from exc
+
+    print_report(console, result, corpus)
+    if json_out is not None:
+        write_json_report(json_out, result, corpus)
+        console.print(f"  wrote {json_out}")
+    if report is not None:
+        write_html_report(report, result, corpus)
+        console.print(f"  wrote {report}")
 
 
 @app.command()
@@ -179,7 +260,16 @@ def inspect(
     selftest: Annotated[bool, typer.Option(help="Measure local capture throughput.")] = False,
 ) -> None:
     """Report stream health, class coverage, and warnings."""
-    _todo("inspect")
+    from rich.console import Console
+
+    from puara_creator.commands import run_inspect
+    from puara_creator.read import CorpusError
+
+    try:
+        run_inspect(session, selftest=selftest)
+    except CorpusError as exc:
+        Console().print(f"[red]{exc}[/]")
+        raise typer.Exit(1) from exc
 
 
 @app.command()
@@ -189,7 +279,16 @@ def label(
     window: Annotated[float, typer.Option(help="Search window around each cue, seconds.")] = 1.5,
 ) -> None:
     """Recompute labels from cues, appending new label events."""
-    _todo("label")
+    from rich.console import Console
+
+    from puara_creator.commands import run_label
+    from puara_creator.read import CorpusError
+
+    try:
+        run_label(session, method=method, window_s=window)
+    except (CorpusError, ValueError) as exc:
+        Console().print(f"[red]{exc}[/]")
+        raise typer.Exit(1) from exc
 
 
 @app.command()

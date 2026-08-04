@@ -30,15 +30,52 @@ jobs:
       - name: Tests
         run: uv run pytest -q
 
-      - name: Record against a synthetic phone
+      - name: The whole loop against a synthetic phone
         run: |
-          uv run python tools/fake_phone.py --port 9099 --duration 4 --bridge-tick 30 \
-            --timestamps --gesture-every 1 &
-          sleep 0.2
+          set -euo pipefail
+
+          # cued material, with the phone reacting to the cue as a performer would
           uv run puara-creator record \
             --subject CI --device fake-phone --gesture jab \
             --in-port 9099 --bind 127.0.0.1 --corpus /tmp/pcr-corpus \
             --schema schemas/namespace/puara-audience.toml \
-            --cue 1.0 --count-in 1 --reps 2 --nominal-rate 100
-          test -s "$(find /tmp/pcr-corpus -name 'take_0001.jsonl')"
-          cat "$(find /tmp/pcr-corpus -name 'take_0001.meta.json')"
+            --cue 1.0 --count-in 1 --reps 4 --nominal-rate 100 --idle-timeout 3 \
+            --cue-out 127.0.0.1:9199 &
+          RECORDER=$!
+          sleep 1
+          uv run python tools/fake_phone.py --port 9099 --duration 8 --timestamps \
+            --cue-in 9199 --reaction-ms 200
+          wait $RECORDER
+
+          # matched ambient material, so the false-positive rate is measurable
+          uv run puara-creator record \
+            --subject CI --device fake-phone --gesture ambient \
+            --in-port 9098 --bind 127.0.0.1 --corpus /tmp/pcr-corpus \
+            --schema schemas/namespace/puara-audience.toml \
+            --cue 0 --nominal-rate 100 --idle-timeout 3 &
+          RECORDER=$!
+          sleep 1
+          uv run python tools/fake_phone.py --port 9098 --duration 8 --timestamps \
+            --gesture-every 0
+          wait $RECORDER
+
+          for session in /tmp/pcr-corpus/*/; do
+            uv run puara-creator label "$session" --method segmenter
+          done
+          uv run puara-creator inspect /tmp/pcr-corpus
+
+          uv run python examples/threshold_dut.py --listen 9400 --reply 127.0.0.1:9401 &
+          DUT=$!
+          sleep 1
+          uv run puara-creator score /tmp/pcr-corpus \
+            --dut osc://127.0.0.1:9400 --class jab --listen 9401 --warmup 0.5 \
+            --json /tmp/results.json --report /tmp/report.html
+          kill $DUT || true
+
+          uv run python -c "
+import json, sys
+r = json.load(open('/tmp/results.json'))
+recall = r['overall']['recall']
+print('recall', recall, 'fp/min', r['overall']['fp_per_min_ambient'])
+sys.exit(0 if recall > 0.5 else 'the threshold baseline found almost nothing')
+"

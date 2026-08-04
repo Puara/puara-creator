@@ -109,12 +109,12 @@ In order, each independently useful:
 1. ~~**`record`, terminal only.**~~ **Done, 4 August 2026.** OSC listener, JSONL writer, session and
    take structure, health metrics with batching detection, cue engine, keyboard control, and a
    synthetic phone in `tools/fake_phone.py`. 39 tests, lint, format and types green.
-2. **`play`.** Deterministic replay with faithful inter-arrival timing. Verifiable by recording the
-   replay and comparing the two streams.
-3. **`inspect`.** Health and coverage reporting over an existing corpus; makes the first two
-   testable without the third.
-4. **`score`.** Matching, metrics, the reference threshold descriptor in `examples/`, JSON and HTML
-   output.
+2. ~~**`play`.**~~ **Done, 4 August 2026.** Verified by recording the replay and comparing streams:
+   identical addresses and arguments, inter-arrival error 0.084 ms at the 95th percentile.
+3. ~~**`inspect`.**~~ **Done, 4 August 2026.** Health, per-subject coverage matrix, warnings.
+   `label` came with it, since scoring has nothing to score against without labels.
+4. ~~**`score`.**~~ **Done, 4 August 2026.** Matching, metrics, per-subject breakdown, holdout
+   locking and logging, HTML and JSON reports, and `examples/threshold_dut.py` as the baseline.
 5. **Web interface.** Session, Capture, Corpus screens first; Annotate and Evaluate follow.
 6. **First real session.** Two subjects, one gesture class, matched ambient material — which is
    also acceptance criterion 3 in `SPEC_V1.md` §9.

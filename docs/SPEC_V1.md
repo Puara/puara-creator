@@ -62,6 +62,7 @@ Listens for OSC, writes a session directory, and optionally emits a cue schedule
 | `--monitor` | `on` | Live health and sparkline display in the terminal |
 | `--health-fail` | see §6.2 | Health thresholds beyond which a take is auto-flagged |
 | `--split` | `train` | Split this session belongs to; assigned here and never changed later (§7) |
+| `--idle-timeout` | `5.0` | Headless only: end the take after this long with no traffic; `0` waits |
 | `--infer-seconds` | `3.0` | How long to listen before recording when no `--schema` is supplied |
 | `--cue-seed` | `0` | Seed for cue jitter, recorded in the metadata so a schedule is reproducible |
 | `--cue-modality` | `audio` | `haptic`, `audio`, `visual`, or `none`; recorded with every cue event |
@@ -79,7 +80,9 @@ Take numbers are unique within a session across both kinds, and the filename pre
 kind: an ambient take numbered 3 is `takes/ambient_0003.jsonl`.
 
 When standard input is not a terminal the recorder starts one take immediately and runs until the
-cue schedule completes or it is interrupted, so that it is usable from a script.
+cue schedule completes, the stream falls silent for `--idle-timeout`, or it is interrupted, so that
+it is usable from a script. The idle timeout is what ends an uncued ambient take, which has no cue
+schedule to finish.
 
 The recorder MUST write each datagram to disk before acknowledging it in the display, and MUST
 flush at least once per second, so that a crash costs at most one second of data.

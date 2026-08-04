@@ -143,6 +143,7 @@ class Recorder:
         self._idle_health = HealthTracker()
         self._spec_cache: dict[str, AddressSpec | None] = {}
         self._total_messages = 0
+        self._last_message_at: float | None = None
         self._with_device_time = 0
         self._malformed = 0
         self._max_queue_depth = 0
@@ -223,6 +224,11 @@ class Recorder:
     @property
     def recording(self) -> bool:
         return self._take is not None
+
+    def idle_for(self) -> float | None:
+        """Seconds since the last message arrived, or None if none ever has."""
+        last = self._last_message_at
+        return None if last is None else monotonic_seconds() - last
 
     def socket_drops(self) -> int | None:
         """Datagrams dropped by the kernel on this socket since it was opened."""
@@ -312,6 +318,7 @@ class Recorder:
                 record["b"] = message.bundle_index
 
             self._total_messages += 1
+            self._last_message_at = t
             self._monitor.observe(message.address, t, magnitude(message.args))
 
             nominal = spec.rate_hz if spec else None

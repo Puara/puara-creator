@@ -92,7 +92,15 @@ class Session:
         subject_meta: dict[str, Any] | None = None,
         device_meta: dict[str, Any] | None = None,
     ) -> None:
-        self.session_id = make_session_id(subject, device)
+        # Two sessions started inside the same second would otherwise share an
+        # identifier and write into each other. Disambiguate rather than refuse: a
+        # scripted capture run does exactly this.
+        base_id = make_session_id(subject, device)
+        self.session_id = base_id
+        suffix = 1
+        while (corpus_root / self.session_id).exists():
+            suffix += 1
+            self.session_id = f"{base_id}-{suffix}"
         self.path = corpus_root / self.session_id
         self.takes_dir = self.path / "takes"
         self.takes_dir.mkdir(parents=True, exist_ok=False)

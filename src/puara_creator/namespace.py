@@ -66,6 +66,20 @@ class AddressSpec:
     def matches(self, address: str) -> bool:
         return fnmatchcase(address, self.address)
 
+    def payload(self, args: list[Any]) -> list[float]:
+        """The sensor values, without the metadata a sender may append after them.
+
+        `puara-server` appends a sequence number and a microsecond timestamp when its
+        `timestamps` toggle is on (docs/PUARA_SERVER.md §2). Those are numbers, and any
+        analysis that takes "all the numeric arguments" would let a microsecond count
+        dominate an acceleration by six orders of magnitude. `arity` is what says where
+        the sensor data stops.
+        """
+        numeric = [
+            float(v) for v in args if isinstance(v, (int, float)) and not isinstance(v, bool)
+        ]
+        return numeric[: self.arity]
+
     def to_meta(self) -> dict[str, Any]:
         """Serialise for meta.json, omitting unset fields."""
         out: dict[str, Any] = {"address": self.address, "role": self.role, "arity": self.arity}
@@ -145,6 +159,31 @@ def load_schema(path: Path) -> NamespaceSchema:
         source=raw.get("source"),
         notes=raw.get("notes"),
     )
+
+
+def load_specs_from_meta(entries: list[dict[str, Any]]) -> list[AddressSpec]:
+    """Rebuild specifications from the `namespace` block of a session's meta.json."""
+    specs = []
+    for entry in entries:
+        rng = entry.get("range")
+        specs.append(
+            AddressSpec(
+                address=entry["address"],
+                role=entry.get("role", "unknown"),
+                arity=int(entry.get("arity", 1)),
+                frame=entry.get("frame"),
+                units=entry.get("units"),
+                range=(float(rng[0]), float(rng[1])) if rng else None,
+                rate_hz=entry.get("rate_hz"),
+                event_rate=bool(entry.get("event_rate", False)),
+                gravity_included=entry.get("gravity_included"),
+                axis_order=entry.get("axis_order"),
+                sequence_field=entry.get("sequence_field"),
+                timestamp_field=entry.get("timestamp_field"),
+                notes=entry.get("notes"),
+            )
+        )
+    return specs
 
 
 class SchemaInferrer:
