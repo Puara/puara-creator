@@ -396,7 +396,10 @@ def test_sustains_five_thousand_messages_per_second(recorder: Any) -> None:
         client.send_message(f"{PREFIX}/accel", [float(index), 0.0, 0.0, index, index])
         due = start + (index + 1) / target_rate
         while time.monotonic() < due:
-            pass
+            # sleep(0), not a bare spin: the receiver and processor threads are in this
+            # same interpreter, and holding the GIL here starves them into losing the
+            # stream. The replayer's wait has the same shape for the same reason.
+            time.sleep(0)
     drain(rec, count, timeout=30.0)
     rec.stop_take()
 
