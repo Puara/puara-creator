@@ -308,24 +308,31 @@ class Recorder:
             record: dict[str, Any] = {"t": t, "a": message.address, "v": message.args}
             if device_seq is not None:
                 record["ds"] = int(device_seq)
+            has_device_time = False
             if device_time is not None:
                 record["dt"] = int(device_time)
-                self._with_device_time += 1
+                has_device_time = True
             elif message.timetag is not None:
                 record["dt"] = message.timetag
-                self._with_device_time += 1
+                has_device_time = True
             if message.bundle_index is not None:
                 record["b"] = message.bundle_index
-
-            self._total_messages += 1
-            self._last_message_at = t
-            self._monitor.observe(message.address, t, magnitude(message.args))
 
             nominal = spec.rate_hz if spec else None
             event_rate = spec.event_rate if spec else False
             seq_value = int(device_seq) if device_seq is not None else None
+            activity = magnitude(message.args)
 
+            # Counting and routing happen together, under one lock. Counted outside it,
+            # a message could be included in the total and then find the take already
+            # closed, so a take could be one message short of what was reported — and
+            # the rolling monitor, which snapshot() reads under this lock, would be
+            # mutated without it.
             with self._lock:
+                self._total_messages += 1
+                self._with_device_time += int(has_device_time)
+                self._last_message_at = t
+                self._monitor.observe(message.address, t, activity)
                 take = self._take
                 if take is None:
                     self._idle_health.observe(
