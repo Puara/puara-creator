@@ -72,10 +72,4 @@ jobs:
             --json /tmp/results.json --report /tmp/report.html
           kill $DUT || true
 
-          uv run python -c "
-import json, sys
-r = json.load(open('/tmp/results.json'))
-recall = r['overall']['recall']
-print('recall', recall, 'fp/min', r['overall']['fp_per_min_ambient'])
-sys.exit(0 if recall > 0.5 else 'the threshold baseline found almost nothing')
-"
+          uv run python tools/check_results.py /tmp/results.json --min-recall 0.5
