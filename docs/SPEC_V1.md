@@ -232,8 +232,14 @@ times has no holdout left.
 remain readable, with the incomplete take marked `status: aborted` on next open.
 
 **Throughput.** The recorder MUST sustain 5 000 messages per second aggregate on the reference
-workstation without loss, measured with a synthetic sender. Measured headroom is reported by
+workstation without loss, measured with a paced synthetic sender. Measured headroom is reported by
 `puara-creator inspect --selftest`.
+
+Above that rate, or in a burst that outruns the receive buffer, the kernel discards datagrams before
+the recorder can see them. Those losses MUST be visible rather than silent: the recorder reads the
+per-socket drop counter — `/proc/net/udp` on Linux — records the count for each take as
+`socket_drops` in its metadata, and warns in the session summary. Where the platform does not expose
+the counter the field is absent rather than zero, because *unknown* and *none* are different claims.
 
 **Storage.** A JSONL line averages roughly 110 bytes; a three-channel stream at 100 Hz produces
 about 12 MB per hour, and an aggregate rate of 3 kHz produces about 1.2 GB per hour. The recorder

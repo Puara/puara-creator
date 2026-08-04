@@ -64,6 +64,8 @@ class Take:
     mark: str | None = None
     cues_emitted: int = 0
     reps_completed: int = 0
+    #: Kernel receive drops during this take; None where the platform cannot say.
+    socket_drops: int | None = None
 
     @property
     def meta_path(self) -> Path:
@@ -200,6 +202,8 @@ class Session:
             "reps_completed": take.reps_completed,
             "health": take.health.to_meta(),
         }
+        if take.socket_drops is not None:
+            payload["socket_drops"] = take.socket_drops
         write_json(take.meta_path, payload)
 
     def close(self) -> None:

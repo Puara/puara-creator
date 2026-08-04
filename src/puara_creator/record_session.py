@@ -282,6 +282,13 @@ def _summary(console: Console, session: Session, recorder: Recorder) -> None:
                 f"tick, not the sample. Enable the timestamps toggle "
                 f"(docs/PUARA_SERVER.md §2) before measuring latency from it[/]"
             )
+    dropped = sum(t.socket_drops or 0 for t in session.takes)
+    if dropped:
+        console.print(
+            f"  [red]the kernel dropped {dropped} datagrams on the receive socket — they "
+            f"never reached the recorder and are simply missing from the corpus. Reduce "
+            f"the send rate, or raise the receive buffer[/]"
+        )
     if snapshot.max_queue_depth > 1000:
         console.print(
             f"  [yellow]processing queue peaked at {snapshot.max_queue_depth} datagrams — "

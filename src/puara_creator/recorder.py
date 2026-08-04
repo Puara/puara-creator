@@ -15,6 +15,7 @@ in the corpus.
 from __future__ import annotations
 
 import contextlib
+import os
 import queue
 import socket
 import threading
@@ -32,6 +33,30 @@ from puara_creator.session import Session, Take, TakeKind
 RECV_BUFFER_BYTES = 8 << 20
 _MAX_DATAGRAM = 65535
 _RECV_TIMEOUT_S = 0.2
+
+#: Linux exposes per-socket receive drops here. Absent elsewhere, and absence is
+#: reported as None rather than as zero, because "unknown" and "none" differ.
+_PROC_NET_UDP = ("/proc/net/udp", "/proc/net/udp6")
+
+
+def _socket_drops(inode: int) -> int | None:
+    """Datagrams the kernel discarded for this socket, or None where unknowable.
+
+    A datagram dropped because the receive buffer was full never reaches the recorder,
+    so nothing else in this module can see it. Without this counter a lost burst looks
+    identical to a burst that was never sent.
+    """
+    for path in _PROC_NET_UDP:
+        try:
+            with open(path) as fh:
+                next(fh, None)
+                for line in fh:
+                    fields = line.split()
+                    if len(fields) > 12 and fields[9] == str(inode):
+                        return int(fields[-1])
+        except (OSError, ValueError):
+            continue
+    return None
 
 
 @dataclass(slots=True)
@@ -76,6 +101,8 @@ class Snapshot:
     #: Messages carrying a device-side timestamp, and addresses arriving in bursts.
     with_device_time: int = 0
     batched_addresses: list[str] = field(default_factory=list)
+    #: Kernel-level receive drops since the socket opened; None where unknowable.
+    socket_drops: int | None = None
     takes: list[TakeView] = field(default_factory=list)
     cued_s: float = 0.0
     ambient_s: float = 0.0
@@ -119,6 +146,8 @@ class Recorder:
         self._with_device_time = 0
         self._malformed = 0
         self._max_queue_depth = 0
+        self._socket_inode: int | None = None
+        self._drops_at_take_start = 0
 
     # -- lifecycle -------------------------------------------------------------
 
@@ -130,6 +159,7 @@ class Recorder:
         sock.bind((self.bind, self.port))
         sock.settimeout(_RECV_TIMEOUT_S)
         self._sock = sock
+        self._socket_inode = os.fstat(sock.fileno()).st_ino
 
         for target, name in ((self._receive_loop, "receiver"), (self._process_loop, "processor")):
             thread = threading.Thread(target=target, name=name, daemon=True)
@@ -154,6 +184,7 @@ class Recorder:
             raise RuntimeError("a take is already recording")
         klass = target_class or (self.target_class if kind == "cued" else "ambient")
         take = self.session.start_take(kind, klass)
+        self._drops_at_take_start = self.socket_drops() or 0
         with self._lock:
             self._take = take
             self._take_seq = 0
@@ -172,6 +203,8 @@ class Recorder:
             self._take = None
         if take is None:
             return None
+        drops = self.socket_drops()
+        take.socket_drops = None if drops is None else drops - self._drops_at_take_start
         self.session.end_take(take, status=status, reason=reason)  # type: ignore[arg-type]
         return take
 
@@ -190,6 +223,12 @@ class Recorder:
     @property
     def recording(self) -> bool:
         return self._take is not None
+
+    def socket_drops(self) -> int | None:
+        """Datagrams dropped by the kernel on this socket since it was opened."""
+        if self._socket_inode is None:
+            return None
+        return _socket_drops(self._socket_inode)
 
     @property
     def current_kind(self) -> TakeKind | None:
@@ -304,6 +343,7 @@ class Recorder:
     # -- display ---------------------------------------------------------------
 
     def snapshot(self) -> Snapshot:
+        drops = self.socket_drops()
         with self._lock:
             take = self._take
             health = take.health if take is not None else self._idle_health
@@ -340,6 +380,7 @@ class Recorder:
                 malformed=self._malformed,
                 with_device_time=self._with_device_time,
                 batched_addresses=health.batched_addresses(),
+                socket_drops=drops,
                 queue_depth=self._queue.qsize(),
                 max_queue_depth=self._max_queue_depth,
                 takes=takes,

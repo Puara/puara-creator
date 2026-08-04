@@ -238,6 +238,7 @@ naively today to be re-labelled properly later without being re-recorded.
   "t_end": 884213520.0,
   "duration_s": 79.0,
   "message_count": 15807,
+  "socket_drops": 0,
   "health": {
     "verdict": "pass",
     "per_address": {
@@ -256,6 +257,10 @@ naively today to be re-labelled properly later without being re-recorded.
   }
 }
 ```
+
+`socket_drops` appears when the platform can report it and counts datagrams the kernel discarded
+during the take, before they reached the recorder. Its absence means the counter was unreadable, not
+that nothing was dropped.
 
 `status` is `complete`, `aborted`, or `recording`. A file left as `recording` indicates a crash; the
 next tool to open the session rewrites it to `aborted` and adds a `take_abort` event.

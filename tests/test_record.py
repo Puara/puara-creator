@@ -379,21 +379,63 @@ def test_probe_infers_addresses_from_traffic(tmp_path: Path) -> None:
 
 
 def test_sustains_five_thousand_messages_per_second(recorder: Any) -> None:
-    """docs/SPEC_V1.md §8 requires 5 000 messages per second without loss."""
+    """docs/SPEC_V1.md §8 requires 5 000 messages per second sustained, without loss.
+
+    Paced to that rate rather than sent as fast as the loop allows: an unpaced burst
+    measures how deep the kernel receive buffer is, which is a different question and one
+    the recorder answers with `socket_drops` instead.
+    """
     rec, session, client = recorder
-    count = 5_000
+    target_rate = 5_000.0
+    duration_s = 2.0
+    count = int(target_rate * duration_s)
+
     rec.start_take("cued")
     start = time.monotonic()
     for index in range(count):
         client.send_message(f"{PREFIX}/accel", [float(index), 0.0, 0.0, index, index])
-    send_elapsed = time.monotonic() - start
-    drain(rec, count, timeout=20.0)
+        due = start + (index + 1) / target_rate
+        while time.monotonic() < due:
+            pass
+    drain(rec, count, timeout=30.0)
     rec.stop_take()
+
+    achieved = count / (time.monotonic() - start)
+    assert achieved >= target_rate * 0.9, f"the sender managed only {achieved:.0f} msg/s"
 
     records = read_take(session, 1)
     assert len(records) == count, f"lost {count - len(records)} of {count}"
     assert [r["ds"] for r in records] == list(range(count))
-    assert send_elapsed < 5.0, f"the sender itself managed only {count / send_elapsed:.0f} msg/s"
+
+    take = session.takes[0]
+    assert take.socket_drops in (0, None)
+
+
+@pytest.mark.skipif(
+    not Path("/proc/net/udp").exists(), reason="kernel drop counters are Linux-only"
+)
+def test_kernel_drops_are_visible_rather_than_silent(recorder: Any) -> None:
+    """A datagram dropped for want of buffer never reaches us; it must not pass unnoticed.
+
+    Continuous integration runners are small enough that an unpaced burst overruns the
+    receive buffer. That is acceptable behaviour — what is not acceptable is a corpus that
+    is quietly short of the data it claims.
+    """
+    rec, session, client = recorder
+    rec.start_take("cued")
+    for index in range(40_000):
+        client.send_message(f"{PREFIX}/accel", [float(index), 0.0, 0.0, index, index])
+    time.sleep(1.0)
+    rec.stop_take()
+
+    take = session.takes[0]
+    assert take.socket_drops is not None, "the drop counter should be readable on Linux"
+    written = len(read_take(session, 1))
+    accounted = written + take.socket_drops
+    # Everything sent is either in the corpus, counted as dropped, or still in flight.
+    assert accounted <= 40_000
+    if written < 40_000:
+        assert take.socket_drops > 0, "messages went missing with no drop recorded"
 
 
 # -- split discipline ------------------------------------------------------------
@@ -414,7 +456,7 @@ def test_a_subject_cannot_span_two_splits(tmp_path: Path) -> None:
     )
     session.close()
 
-    _check_split(corpus, "S01", "train")  # same split is fine
+    _check_split(corpus, "S01", "train")  # the same split is fine
     _check_split(corpus, "S02", "test")  # a new subject is fine
     with pytest.raises(RecordError, match="already belongs to split 'train'"):
         _check_split(corpus, "S01", "test")
