@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from tests.test_pipeline import build_session
 
 from puara_creator.web import STATIC, build_command, corpus_summary, create_app
+from tests.test_pipeline import build_session
 
 
 @pytest.fixture

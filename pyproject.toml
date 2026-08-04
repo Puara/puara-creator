@@ -78,6 +78,12 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM", "RUF"]
 
+[tool.ruff.lint.isort]
+# Stated rather than inferred: whether `tests` looks first-party depends on what is
+# installed, so a clean checkout sorted imports differently from a working tree and CI
+# failed on a file that passed locally.
+known-first-party = ["puara_creator", "tests"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
