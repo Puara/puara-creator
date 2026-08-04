@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Puara/puara-creator/schemas/meta.schema.json",
+  "title": "puara-creator session metadata",
+  "description": "Normative schema for <session_id>/meta.json. See docs/FORMAT.md §2.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "session_id",
+    "created_utc",
+    "split",
+    "subject",
+    "device",
+    "clock",
+    "namespace",
+    "software"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "session_id": { "type": "string", "minLength": 1 },
+    "created_utc": { "type": "string", "format": "date-time" },
+    "split": { "enum": ["train", "val", "test"] },
+    "protocol": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "integer" },
+        "cue_interval_s": { "type": "number", "minimum": 0 },
+        "cue_jitter_s": { "type": "number", "minimum": 0 },
+        "count_in": { "type": "integer", "minimum": 0 },
+        "reps_per_take": { "type": "integer", "minimum": 1 },
+        "cue_modality": { "enum": ["haptic", "audio", "visual", "none"] },
+        "target_class": { "type": "string" }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Pseudonymous identifier. Never a name. See docs/PROTOCOL.md §6.",
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "handedness": { "enum": ["left", "right", "ambidextrous", "unknown"] },
+        "experience": { "enum": ["novice", "intermediate", "expert", "unknown"] },
+        "consent_ref": { "type": "string" }
+      }
+    },
+    "device": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string" },
+        "model": { "type": "string" },
+        "firmware_version": { "type": "string" },
+        "firmware_hash": {
+          "type": "string",
+          "description": "A corpus recorded across a firmware change is two corpora."
+        },
+        "transport": { "enum": ["wifi", "usb", "serial", "ethernet", "unknown"] },
+        "nominal_rate_hz": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "clock": {
+      "type": "object",
+      "required": ["source", "unit"],
+      "properties": {
+        "source": { "const": "CLOCK_MONOTONIC" },
+        "unit": { "const": "microsecond" },
+        "monotonic_at_start_us": { "type": "integer" },
+        "wall_at_start_utc": { "type": "string", "format": "date-time" }
+      }
+    },
+    "calibration": { "type": "object", "additionalProperties": { "type": "string" } },
+    "namespace": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["address", "role", "arity"],
+        "properties": {
+          "address": { "type": "string", "pattern": "^/" },
+          "role": {
+            "description": "Controlled vocabulary; unrecognised values are treated as unknown.",
+            "type": "string",
+            "examples": [
+              "acceleration",
+              "angular_velocity",
+              "magnetic_field",
+              "orientation_quaternion",
+              "orientation_euler",
+              "touch_array",
+              "pressure",
+              "breath",
+              "distance",
+              "button",
+              "analog",
+              "derived",
+              "unknown"
+            ]
+          },
+          "frame": { "enum": ["device", "world", "none"] },
+          "units": { "type": "string" },
+          "arity": { "type": "integer", "minimum": 1 },
+          "range": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "rate_hz": { "type": "number", "exclusiveMinimum": 0 },
+          "gravity_included": { "type": "boolean" },
+          "sequence_field": {
+            "type": "integer",
+            "description": "Index into the argument list carrying a device sequence number."
+          },
+          "timestamp_field": {
+            "type": "integer",
+            "description": "Index into the argument list carrying a device timestamp in microseconds."
+          }
+        }
+      }
+    },
+    "namespace_inferred": {
+      "type": "boolean",
+      "description": "True when the schema was guessed from traffic. Disables derived features."
+    },
+    "software": {
+      "type": "object",
+      "required": ["tool", "version"],
+      "properties": {
+        "tool": { "const": "puara-creator" },
+        "version": { "type": "string" },
+        "git_commit": { "type": "string" }
+      }
+    }
+  }
+}

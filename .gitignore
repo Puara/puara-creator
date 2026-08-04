@@ -1,0 +1,47 @@
+# ---- Claude Code / assistant tooling ----------------------------------------
+.claude/
+.claude.json
+.claude.json.backup
+CLAUDE.md
+CLAUDE.local.md
+.mcp.json
+*.backupclaude
+.backupclaude/
+
+# ---- recorded data -----------------------------------------------------------
+# Corpora contain movement data from identifiable people; publishing one is a
+# deliberate act, not a consequence of `git add -A`. See docs/PROTOCOL.md §6.
+corpus/
+!examples/corpus/
+**/derived/
+*.jsonl
+!examples/**/*.jsonl
+*.parquet
+holdout_log.jsonl
+
+# ---- python ------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+# uv.lock IS committed — puara-creator is an application, not a library.
+
+# ---- reports and scratch -----------------------------------------------------
+report.html
+results.json
+*.log
+.scratch/
+
+# ---- editors and os ----------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+.DS_Store

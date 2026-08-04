@@ -1,0 +1,86 @@
+[project]
+name = "puara-creator"
+version = "0.1.0.dev0"
+description = "A corpus-driven workbench for designing gesture descriptors for puara-gestures"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "AGPL-3.0-or-later" }
+authors = [
+    { name = "Eduardo Meneses", email = "emeneses@sat.qc.ca" },
+]
+maintainers = [
+    { name = "Eduardo Meneses", email = "emeneses@sat.qc.ca" },
+]
+keywords = [
+    "osc",
+    "gesture",
+    "digital-musical-instruments",
+    "nime",
+    "sensors",
+    "puara",
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio :: Analysis",
+    "Topic :: Scientific/Engineering",
+]
+
+dependencies = [
+    "python-osc>=1.9",
+    "typer>=0.12",
+    "rich>=13.7",
+    "numpy>=2.0",
+    "orjson>=3.10",
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.30",
+]
+
+[project.optional-dependencies]
+parquet = ["pyarrow>=16.0"]
+plots = ["matplotlib>=3.9"]
+
+[project.urls]
+Homepage = "https://github.com/Puara/puara-creator"
+Repository = "https://github.com/Puara/puara-creator"
+Issues = "https://github.com/Puara/puara-creator/issues"
+"Companion library" = "https://github.com/Puara/puara-gestures"
+
+[project.scripts]
+puara-creator = "puara_creator.cli:app"
+pcr = "puara_creator.cli:app"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.5",
+    "mypy>=1.10",
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/puara_creator"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+files = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
