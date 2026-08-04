@@ -311,7 +311,19 @@ def ui(
     ] = "127.0.0.1",
 ) -> None:
     """Serve the local web interface."""
-    _todo("ui")
+    from rich.console import Console
+
+    from puara_creator.web import serve
+
+    console = Console()
+    if bind != "127.0.0.1":
+        console.print(
+            f"[yellow]binding {bind}: the interface exposes a corpus of movement data from "
+            f"identifiable people. Loopback is the default for that reason "
+            f"(docs/PROTOCOL.md §6)[/]"
+        )
+    console.print(f"[bold]puara-creator[/] http://{bind}:{port}  corpus {corpus}")
+    serve(corpus, bind, port)
 
 
 if __name__ == "__main__":

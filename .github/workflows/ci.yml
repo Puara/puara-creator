@@ -73,3 +73,15 @@ jobs:
           kill $DUT || true
 
           uv run python tools/check_results.py /tmp/results.json --min-recall 0.5
+
+      - name: The web interface serves the corpus
+        run: |
+          set -euo pipefail
+          uv run puara-creator ui --corpus /tmp/pcr-corpus --port 8433 &
+          UI=$!
+          sleep 4
+          curl -sf http://127.0.0.1:8433/ > /dev/null
+          curl -sf http://127.0.0.1:8433/api/meta
+          curl -sf http://127.0.0.1:8433/api/corpus > /tmp/corpus.json
+          uv run python -c "import json;d=json.load(open('/tmp/corpus.json'));assert d['sessions'],'no sessions'"
+          kill $UI || true

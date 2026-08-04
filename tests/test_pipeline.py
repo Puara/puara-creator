@@ -102,7 +102,14 @@ def build_session(
             }
         )
         take.health.observe(f"{PREFIX}/accel", t, nominal_rate_hz=100.0, device_seq=index)
+
+    # The records above were written instantly, so the take's wall-clock duration is
+    # meaningless. Stamp it with the duration of the material it actually contains, or
+    # every per-minute figure computed from this fixture would be zero.
+    take.t_start = base
     session.end_take(take)
+    take.t_end = base + samples * period
+    session.write_take_meta(take)
     return session
 
 

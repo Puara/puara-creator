@@ -59,9 +59,10 @@ approach will not be enough, is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md
 
 ## Status
 
-**Pre-alpha.** The specification is complete and the command surface is frozen. `record`, `play`,
-`label`, `inspect` and `score` are implemented and tested end to end against a synthetic sender;
-`convert` and the web interface are specified but not yet written, and raise `NotImplementedError`.
+**Alpha.** Every v1 command except `convert` is implemented and tested end to end against a
+synthetic sender: `record`, `play`, `label`, `inspect`, `score`, and the local web interface. What
+remains is `convert`, and a first corpus recorded from real performers — see
+[`docs/FIRST_SESSION.md`](docs/FIRST_SESSION.md).
 
 Documentation:
 
@@ -76,6 +77,7 @@ Documentation:
 | [`docs/EVALUATION.md`](docs/EVALUATION.md) | Metrics and methodological discipline |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | v1 → v3 |
 | [`docs/DESIGN_NOTES.md`](docs/DESIGN_NOTES.md) | Rejected options, prior art, known risks |
+| [`docs/FIRST_SESSION.md`](docs/FIRST_SESSION.md) | Runbook for the first recording with real performers |
 | [`docs/LICENSING.md`](docs/LICENSING.md) | Licence of the tool and of what it generates |
 
 ## Installation
@@ -133,11 +135,25 @@ puara-creator score corpus/ --dut osc://127.0.0.1:9000 --class jab --report repo
 The descriptor under test is an OSC endpoint, not a linked library, so the same scorer evaluates a
 C++ harness, an ossia/score patch, a Max abstraction, or the instrument itself with injected data.
 
+## The browser
+
+```bash
+puara-creator ui        # http://127.0.0.1:8420
+```
+
+Five screens over the same core: **Session** (namespace detection, protocol, metadata),
+**Capture** (live health, cue countdown, keyboard-driven takes), **Annotate** (activity waveform
+with cues and labels, reaction-time distribution), **Corpus** (coverage matrix and warnings),
+**Evaluate** (run a scoring pass, read the metrics, click a failure to open it in the annotator).
+
+Every screen shows the `puara-creator` invocation it is equivalent to, because the command line is
+the contract and nothing is achievable only by clicking. It binds loopback only unless told
+otherwise, since a corpus is movement data from identifiable people.
+
 ## Planned
 
 ```bash
 puara-creator convert corpus/20260803-141200_S01_phone-1 --format parquet
-puara-creator ui
 ```
 
 ## Credits

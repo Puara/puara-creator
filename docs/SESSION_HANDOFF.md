@@ -115,11 +115,16 @@ In order, each independently useful:
    `label` came with it, since scoring has nothing to score against without labels.
 4. ~~**`score`.**~~ **Done, 4 August 2026.** Matching, metrics, per-subject breakdown, holdout
    locking and logging, HTML and JSON reports, and `examples/threshold_dut.py` as the baseline.
-5. **Web interface.** Session, Capture, Corpus screens first; Annotate and Evaluate follow.
-6. **First real session.** Two subjects, one gesture class, matched ambient material — which is
-   also acceptance criterion 3 in `SPEC_V1.md` §9.
+5. ~~**Web interface.**~~ **Done, 4 August 2026.** All five screens, FastAPI with one hand-written
+   page, no bundler, loopback by default. Every action maps to a CLI invocation and the page shows
+   it.
+6. **First real session.** *Blocked on people, phones and consent, not on software.* The runbook is
+   `docs/FIRST_SESSION.md`. Its prerequisites, in order: the `timestamps: bridge` toggle on
+   `puara-server`, haptic cue forwarding, and signed consent.
 
-The web interface deliberately comes after the CLI, because the CLI is the contract and the
+Also outstanding: `convert` (Parquet and CSV export), which nothing else depends on.
+
+The web interface deliberately came after the CLI, because the CLI is the contract and the
 interface constructs CLI invocations.
 
 ## 7. Conventions carried from the conversation

@@ -285,7 +285,19 @@ an afternoon.
 | Evaluate | `enter` | Run |
 | Evaluate | `.` | Re-run with the same settings |
 
-## 5. Implementation notes
+## 5. Status
+
+Implemented in `src/puara_creator/web.py` and `src/puara_creator/static/index.html` as of
+4 August 2026. The mock-ups above are the specification; the built interface follows them in
+structure and in the two rules that matter — the equivalent command is always on screen, and the
+cued-to-ambient ratio and stream health are always visible during capture.
+
+One deliberate difference: the annotator draws the activity signal, cues, labels and the
+reaction-time distribution, and supports appending a manual label, but per-repetition nudging with
+the arrow keys is not built yet. Correcting a label today means placing a new one, which the format
+supports directly since labels are appended and carry provenance.
+
+## 6. Implementation notes
 
 FastAPI serves the single page and a WebSocket at `/ws`. The WebSocket carries decimated telemetry
 only — per-address rate, health counters, and a downsampled activity envelope at about 60 Hz — never

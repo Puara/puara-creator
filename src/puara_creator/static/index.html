@@ -1,0 +1,695 @@
+<!doctype html>
+<!--
+  SPDX-License-Identifier: AGPL-3.0-or-later
+  Copyright (C) 2026 Société des Arts Technologiques (SAT)
+  Copyright (C) 2026 Input Devices and Music Interaction Laboratory (IDMIL), McGill University
+  Copyright (C) 2026 Eduardo Meneses
+
+  One page, vanilla JavaScript, canvas plots, no bundler and no external request.
+  See docs/UI.md.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>puara-creator</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root {
+  color-scheme: dark light;
+  --bg:#0d0f12; --panel:#14171c; --fg:#e8eaed; --dim:#8b939c; --line:#252a31;
+  --ok:#4ac26b; --warn:#e3b341; --bad:#ff6b5e; --accent:#7aa2ff; --rec:#ff4d4d;
+}
+@media (prefers-color-scheme: light) {
+  :root { --bg:#fbfbfc; --panel:#fff; --fg:#14171c; --dim:#5d666f; --line:#e2e5e9;
+          --ok:#1a7f37; --warn:#9a6700; --bad:#b3261e; --accent:#0b5fff; --rec:#d32f2f; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--fg); display:flex; min-height:100vh;
+       font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+nav { width:12rem; flex:0 0 12rem; background:var(--panel); border-right:1px solid var(--line);
+      padding:1rem .75rem; display:flex; flex-direction:column; gap:.15rem; }
+nav h1 { font-size:.95rem; margin:0 0 1rem; letter-spacing:.02em; }
+nav h1 small { display:block; color:var(--dim); font-weight:400; font-size:.7rem; }
+nav button { all:unset; cursor:pointer; padding:.4rem .6rem; border-radius:.3rem; color:var(--dim); }
+nav button:hover { background:var(--line); }
+nav button[aria-current="true"] { background:var(--accent); color:#fff; }
+nav .status { margin-top:auto; color:var(--dim); font-size:.75rem; border-top:1px solid var(--line);
+              padding-top:.75rem; }
+main { flex:1; padding:1.25rem 1.5rem; overflow:auto; }
+section { display:none; max-width:74rem; }
+section[aria-hidden="false"] { display:block; }
+h2 { font-size:1.05rem; margin:0 0 1rem; }
+h3 { font-size:.85rem; color:var(--dim); text-transform:uppercase; letter-spacing:.05em;
+     margin:1.5rem 0 .5rem; font-weight:500; }
+.panel { background:var(--panel); border:1px solid var(--line); border-radius:.5rem;
+         padding:1rem 1.1rem; margin-bottom:1rem; }
+.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(11rem,1fr)); gap:.75rem; }
+label { display:block; font-size:.75rem; color:var(--dim); margin-bottom:.2rem; }
+input,select,textarea { width:100%; background:var(--bg); color:var(--fg);
+       border:1px solid var(--line); border-radius:.3rem; padding:.35rem .5rem; font:inherit; }
+button.act { background:var(--accent); color:#fff; border:none; border-radius:.3rem;
+             padding:.45rem .9rem; font:inherit; cursor:pointer; }
+button.act:disabled { opacity:.4; cursor:not-allowed; }
+button.ghost { background:transparent; color:var(--fg); border:1px solid var(--line);
+               border-radius:.3rem; padding:.45rem .9rem; font:inherit; cursor:pointer; }
+.row { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
+pre.cmd { background:var(--bg); border:1px solid var(--line); border-radius:.3rem;
+          padding:.6rem .7rem; overflow-x:auto; color:var(--dim); font-size:.78rem; margin:.5rem 0; }
+.scroll { overflow-x:auto; }
+table { border-collapse:collapse; width:100%; font-size:.82rem; }
+th,td { text-align:right; padding:.3rem .55rem; border-bottom:1px solid var(--line);
+        white-space:nowrap; }
+th:first-child,td:first-child { text-align:left; }
+th { color:var(--dim); font-weight:500; font-size:.72rem; text-transform:uppercase; }
+.ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)} .dim{color:var(--dim)}
+.big { font-size:2.4rem; font-weight:700; line-height:1.1; }
+.rec { color:var(--rec); font-weight:700; }
+canvas { width:100%; height:150px; display:block; background:var(--bg);
+         border:1px solid var(--line); border-radius:.3rem; }
+ul.warnings { margin:.4rem 0 0; padding-left:1.1rem; }
+ul.warnings li { color:var(--warn); margin:.2rem 0; }
+.keys { color:var(--dim); font-size:.78rem; margin-top:.75rem; }
+.kbd { border:1px solid var(--line); border-radius:.2rem; padding:0 .3rem; }
+.spark { font-family:inherit; letter-spacing:-1px; color:var(--accent); }
+.clickable { cursor:pointer; text-decoration:underline dotted; }
+</style>
+</head>
+<body>
+<nav>
+  <h1>puara-creator<small id="version"></small></h1>
+  <button data-screen="session" aria-current="true">1 Session</button>
+  <button data-screen="capture">2 Capture</button>
+  <button data-screen="annotate">3 Annotate</button>
+  <button data-screen="corpus">4 Corpus</button>
+  <button data-screen="evaluate">5 Evaluate</button>
+  <div class="status">
+    <div id="conn">connecting…</div>
+    <div id="corpuspath" class="dim"></div>
+  </div>
+</nav>
+
+<main>
+<!-- 1 ─ session ─────────────────────────────────────────────────────────── -->
+<section id="s-session" aria-hidden="false">
+  <h2>Session</h2>
+  <div class="panel">
+    <div class="grid">
+      <div><label>OSC in-port</label><input id="in_port" type="number" value="8000"></div>
+      <div><label>Subject</label><input id="subject" value="S01"></div>
+      <div><label>Device</label><input id="device" value="phone-1"></div>
+      <div><label>Gesture class</label><input id="gesture" value="jab"></div>
+      <div><label>Split — assign before recording</label>
+        <select id="split"><option>train</option><option>val</option><option>test</option></select></div>
+      <div><label>Namespace schema (path)</label>
+        <input id="schema" placeholder="schemas/namespace/puara-audience.toml"></div>
+    </div>
+    <div class="row" style="margin-top:.75rem">
+      <button class="ghost" id="probe">Listen and detect addresses</button>
+      <span id="probeout" class="dim"></span>
+    </div>
+    <div id="probetable" class="scroll"></div>
+  </div>
+
+  <div class="panel">
+    <h3>Protocol</h3>
+    <div class="grid">
+      <div><label>Cue interval (s)</label><input id="cue" type="number" step="0.1" value="4"></div>
+      <div><label>Cue jitter (s)</label><input id="cue_jitter" type="number" step="0.1" value="0"></div>
+      <div><label>Count-in</label><input id="count_in" type="number" value="3"></div>
+      <div><label>Reps per take</label><input id="reps" type="number" value="20"></div>
+      <div><label>Cue out (HOST:PORT)</label><input id="cue_out" placeholder="192.168.1.50:8000"></div>
+      <div><label>Cue modality</label>
+        <select id="cue_modality"><option>haptic</option><option selected>audio</option>
+        <option>visual</option><option>none</option></select></div>
+    </div>
+    <h3>Subject and device metadata</h3>
+    <div class="grid">
+      <div><label>Handedness</label>
+        <select id="handedness"><option value="">—</option><option>right</option>
+        <option>left</option><option>ambidextrous</option></select></div>
+      <div><label>Experience</label>
+        <select id="experience"><option value="">—</option><option>novice</option>
+        <option>intermediate</option><option>expert</option></select></div>
+      <div><label>Consent reference</label><input id="consent_ref"></div>
+      <div><label>Nominal rate (Hz)</label><input id="nominal_rate" type="number" value="100"></div>
+      <div><label>Firmware hash</label><input id="firmware_hash"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Equivalent command — the CLI is the contract</h3>
+    <pre class="cmd" id="command">…</pre>
+    <div class="row">
+      <button class="ghost" id="copy">Copy</button>
+      <button class="act" id="start">Start session</button>
+      <span id="startout" class="dim"></span>
+    </div>
+  </div>
+</section>
+
+<!-- 2 ─ capture ─────────────────────────────────────────────────────────── -->
+<section id="s-capture" aria-hidden="true">
+  <h2>Capture</h2>
+  <div class="panel" id="capidle">Nothing is recording. Start a session on screen 1.</div>
+  <div id="caplive" style="display:none">
+    <div class="panel">
+      <div class="row" style="justify-content:space-between">
+        <div><span id="captake" class="big">—</span>
+          <div id="capmeta" class="dim"></div></div>
+        <div style="text-align:right">
+          <div id="capclock" class="big">00:00</div>
+          <div id="capreps" class="dim"></div>
+        </div>
+      </div>
+      <canvas id="capcanvas" height="150"></canvas>
+      <div id="capcue" class="dim" style="margin-top:.4rem"></div>
+    </div>
+    <div class="panel">
+      <h3>Streams</h3>
+      <div class="scroll"><table id="capstreams"></table></div>
+      <div id="caphealth" style="margin-top:.6rem"></div>
+    </div>
+    <div class="panel">
+      <h3>Takes</h3>
+      <div class="scroll"><table id="captakes"></table></div>
+      <div id="capratio" style="margin-top:.6rem"></div>
+    </div>
+    <div class="panel">
+      <div class="row">
+        <button class="act" data-action="toggle_take">space — start / stop take</button>
+        <button class="ghost" data-action="ambient_take">a — ambient</button>
+        <button class="ghost" data-action="mark_bad">x — mark bad</button>
+        <button class="ghost" data-action="redo">r — redo</button>
+        <button class="ghost" data-action="note">n — note</button>
+        <button class="ghost" id="endsession">q — end session</button>
+      </div>
+      <div class="keys">Keys work anywhere on this screen.
+        Every button is one <span class="kbd">key</span> in the terminal recorder too.</div>
+      <pre class="cmd" id="capcommand"></pre>
+    </div>
+  </div>
+</section>
+
+<!-- 3 ─ annotate ────────────────────────────────────────────────────────── -->
+<section id="s-annotate" aria-hidden="true">
+  <h2>Annotate</h2>
+  <div class="panel">
+    <div class="row">
+      <div style="min-width:20rem"><label>Session</label><select id="ann_session"></select></div>
+      <div><label>Take</label><select id="ann_take"></select></div>
+      <div><label>Labelling method</label>
+        <select id="ann_method"><option>segmenter</option><option>aligned</option><option>cue</option></select></div>
+      <button class="ghost" id="ann_relabel">Recompute labels</button>
+    </div>
+    <pre class="cmd" id="ann_command"></pre>
+  </div>
+  <div class="panel">
+    <canvas id="anncanvas" height="220"></canvas>
+    <div id="annlegend" class="dim" style="margin-top:.4rem">
+      <span style="color:var(--accent)">▬</span> activity
+      <span style="color:var(--warn)">▲</span> cue
+      <span style="color:var(--ok)">▮</span> label (onset → offset)
+    </div>
+    <div id="annstats" style="margin-top:.6rem"></div>
+  </div>
+  <div class="panel">
+    <h3>Reaction time — the gap a cue is not allowed to stand in for</h3>
+    <div id="annreaction" class="dim">—</div>
+  </div>
+</section>
+
+<!-- 4 ─ corpus ──────────────────────────────────────────────────────────── -->
+<section id="s-corpus" aria-hidden="true">
+  <h2>Corpus</h2>
+  <div class="panel">
+    <h3>Coverage — cued minutes per subject and class</h3>
+    <div class="scroll"><table id="coverage"></table></div>
+  </div>
+  <div class="panel">
+    <h3>Warnings</h3>
+    <div id="corpuswarn">—</div>
+  </div>
+  <div class="panel">
+    <h3>Sessions</h3>
+    <div class="scroll"><table id="sessions"></table></div>
+  </div>
+</section>
+
+<!-- 5 ─ evaluate ────────────────────────────────────────────────────────── -->
+<section id="s-evaluate" aria-hidden="true">
+  <h2>Evaluate</h2>
+  <div class="panel">
+    <div class="grid">
+      <div><label>Descriptor under test</label><input id="ev_dut" value="osc://127.0.0.1:9000"></div>
+      <div><label>Detections port</label><input id="ev_listen" type="number" value="9001"></div>
+      <div><label>Class</label><input id="ev_class" value="jab"></div>
+      <div><label>Split</label>
+        <select id="ev_split"><option>train</option><option>val</option><option>test</option></select></div>
+      <div><label>Label source</label>
+        <select id="ev_labels"><option>segmenter</option><option>aligned</option>
+        <option>manual</option><option>cue</option></select></div>
+      <div><label>Tolerance (ms)</label><input id="ev_tol" type="number" value="250"></div>
+      <div><label>Warm-up (s)</label><input id="ev_warmup" type="number" step="0.5" value="2"></div>
+      <div><label>DUT version</label><input id="ev_version" placeholder="puara-gestures@c19aa02"></div>
+    </div>
+    <div class="row" style="margin-top:.75rem">
+      <label style="margin:0"><input type="checkbox" id="ev_unlock" style="width:auto">
+        unlock the test split (logged)</label>
+      <button class="act" id="ev_run">Run</button>
+      <span id="ev_status" class="dim"></span>
+    </div>
+    <pre class="cmd" id="ev_command"></pre>
+  </div>
+  <div id="ev_results"></div>
+</section>
+</main>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const api = async (path, body) => {
+  const opts = body === undefined ? {} :
+    { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) };
+  const res = await fetch(path, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok && !data.error) throw new Error(data.detail || res.statusText);
+  return data;
+};
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const clock = (s) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+const verdictClass = (v) => v === "pass" ? "ok" : v === "warn" ? "warn" : "bad";
+const BLOCKS = "▁▂▃▄▅▆▇█";
+const spark = (values) => values.map(v =>
+  BLOCKS[Math.max(0, Math.min(7, Math.round(v * 7)))]).join("");
+
+/* ── navigation ─────────────────────────────────────────────────────────── */
+let screen = "session";
+function show(name) {
+  screen = name;
+  for (const button of document.querySelectorAll("nav button[data-screen]"))
+    button.setAttribute("aria-current", String(button.dataset.screen === name));
+  for (const section of document.querySelectorAll("main section"))
+    section.setAttribute("aria-hidden", String(section.id !== "s-" + name));
+  if (name === "corpus") loadCorpus();
+  if (name === "annotate") loadAnnotateSessions();
+}
+document.querySelectorAll("nav button[data-screen]").forEach(b =>
+  b.addEventListener("click", () => show(b.dataset.screen)));
+
+document.addEventListener("keydown", (event) => {
+  if (["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName)) return;
+  const screens = { "1": "session", "2": "capture", "3": "annotate", "4": "corpus", "5": "evaluate" };
+  if (screens[event.key]) { show(screens[event.key]); return; }
+  if (screen !== "capture" || !live.recording) return;
+  const actions = { " ": "toggle_take", a: "ambient_take", x: "mark_bad", r: "redo" };
+  if (actions[event.key]) { event.preventDefault(); action(actions[event.key]); }
+  else if (event.key === "n") { event.preventDefault(); noteAction(); }
+  else if (event.key === "q") { event.preventDefault(); $("endsession").click(); }
+});
+
+/* ── session ────────────────────────────────────────────────────────────── */
+const FIELDS = ["in_port", "subject", "device", "gesture", "split", "schema", "cue", "cue_jitter",
+  "count_in", "reps", "cue_out", "cue_modality", "handedness", "experience", "consent_ref",
+  "nominal_rate", "firmware_hash"];
+const formPayload = () => Object.fromEntries(FIELDS.map(f => [f, $(f).value]));
+
+async function refreshCommand() {
+  const { command } = await api("/api/command", formPayload());
+  $("command").textContent = command;
+}
+FIELDS.forEach(f => $(f).addEventListener("input", refreshCommand));
+
+$("copy").addEventListener("click", () =>
+  navigator.clipboard?.writeText($("command").textContent));
+
+$("probe").addEventListener("click", async () => {
+  $("probeout").textContent = "listening 3 s…";
+  try {
+    const data = await api("/api/probe", { in_port: Number($("in_port").value), seconds: 3 });
+    if (!data.addresses.length) {
+      $("probeout").innerHTML = '<span class="warn">no traffic on that port</span>';
+      $("probetable").innerHTML = ""; return;
+    }
+    $("probeout").innerHTML = `<span class="ok">${data.addresses.length} addresses</span>`;
+    $("probetable").innerHTML = `<table><tr><th>address</th><th>arity</th><th>rate</th>
+      <th>role</th></tr>` + data.addresses.map(a => `<tr><td>${esc(a.address)}</td>
+      <td>${a.arity}</td><td>${a.rate_hz ? a.rate_hz.toFixed(1) + " Hz" : "event"}</td>
+      <td class="warn">${esc(a.role)}</td></tr>`).join("") + `</table>
+      <p class="warn" style="font-size:.8rem">Inferred addresses carry no units and no frames,
+      so derived features stay disabled. Supply a schema above to fix that — it cannot be
+      fixed after recording.</p>`;
+  } catch (e) { $("probeout").innerHTML = `<span class="bad">${esc(e.message)}</span>`; }
+});
+
+$("start").addEventListener("click", async () => {
+  $("startout").textContent = "starting…";
+  try {
+    const data = await api("/api/capture/start", formPayload());
+    $("startout").innerHTML = `<span class="ok">${esc(data.session_id)}</span>`;
+    show("capture");
+  } catch (e) { $("startout").innerHTML = `<span class="bad">${esc(e.message)}</span>`; }
+});
+
+/* ── capture ────────────────────────────────────────────────────────────── */
+let live = { recording: false };
+const history = [];
+
+const action = (name, extra = {}) => api("/api/capture/action", { action: name, ...extra });
+function noteAction() {
+  const text = prompt("note");
+  if (text) action("note", { text });
+}
+document.querySelectorAll("[data-action]").forEach(b =>
+  b.addEventListener("click", () => b.dataset.action === "note" ? noteAction() : action(b.dataset.action)));
+$("endsession").addEventListener("click", async () => {
+  await api("/api/capture/stop", {});
+  history.length = 0;
+  show("corpus");
+});
+
+function drawCapture(snapshot) {
+  const canvas = $("capcanvas");
+  const ratio = window.devicePixelRatio || 1;
+  canvas.width = canvas.clientWidth * ratio;
+  canvas.height = 150 * ratio;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(ratio, ratio);
+  const width = canvas.clientWidth, height = 150;
+  ctx.clearRect(0, 0, width, height);
+
+  const style = getComputedStyle(document.documentElement);
+  const first = snapshot.addresses[0];
+  if (!first) return;
+  const values = first.envelope || [];
+  ctx.strokeStyle = style.getPropertyValue("--accent");
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  values.forEach((v, i) => {
+    const x = (i / Math.max(1, values.length - 1)) * width;
+    const y = height - 8 - v * (height - 24);
+    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  });
+  ctx.stroke();
+  ctx.fillStyle = style.getPropertyValue("--dim");
+  ctx.font = "10px monospace";
+  ctx.fillText(first.address + "  (last 3 s)", 6, 13);
+}
+
+function renderCapture(message) {
+  live = message;
+  if (!message.recording) {
+    $("capidle").style.display = ""; $("caplive").style.display = "none"; return;
+  }
+  $("capidle").style.display = "none"; $("caplive").style.display = "";
+  const s = message.snapshot;
+
+  if (s.in_take && s.take) {
+    $("captake").innerHTML = `<span class="rec">●</span> TAKE ${String(s.take.number).padStart(3, "0")}`;
+    $("capmeta").textContent = `${s.take.kind} · ${s.take.target_class} · ${message.subject} · ${message.split}`;
+    $("capclock").textContent = clock(s.take.duration_s);
+    const index = s.cue_index ?? 0;
+    $("capreps").innerHTML = index < 0
+      ? `<span class="warn">count-in ${-index}</span>`
+      : `${Math.max(0, index)}/${s.cue_reps} reps`;
+  } else {
+    $("captake").textContent = "IDLE";
+    $("capmeta").textContent = `${message.subject} · ${message.split} — press space to start a take`;
+    $("capclock").textContent = "00:00"; $("capreps").textContent = "";
+  }
+  $("capcue").textContent = s.cue_next_in_s == null ? ""
+    : `next cue in ${s.cue_next_in_s.toFixed(1)} s`;
+
+  $("capstreams").innerHTML = `<tr><th>address</th><th>rate</th><th>activity</th>
+    <th>iai p95</th><th></th></tr>` + s.addresses.map(a => `<tr>
+    <td>${esc(a.address)}</td>
+    <td>${a.event_rate ? "event" : a.rate_hz.toFixed(1) + " Hz"}</td>
+    <td class="spark">${spark(a.envelope)}</td>
+    <td>${a.iai_p95_ms.toFixed(1)} ms</td>
+    <td class="${verdictClass(a.verdict)}">${a.verdict}</td></tr>`).join("");
+
+  const bits = [`<span class="${verdictClass(s.verdict)}">${s.verdict.toUpperCase()}</span>`,
+    `<span class="dim">${s.total_messages} messages</span>`];
+  if (s.malformed) bits.push(`<span class="bad">${s.malformed} malformed</span>`);
+  if (s.socket_drops) bits.push(`<span class="bad">${s.socket_drops} kernel drops</span>`);
+  if (s.batched.length) bits.push(`<span class="warn">arrivals batched on a sender tick${
+    s.with_device_time ? " (recoverable: per-sample timestamps present)"
+                       : " — see docs/PUARA_SERVER.md §2"}</span>`);
+  if (message.schema_inferred) bits.push('<span class="warn">namespace inferred</span>');
+  $("caphealth").innerHTML = bits.join(" &nbsp; ");
+
+  $("captakes").innerHTML = `<tr><th>#</th><th>kind</th><th>class</th><th>duration</th>
+    <th>messages</th><th>mark</th><th></th></tr>` + s.takes.map(t => `<tr>
+    <td>${String(t.number).padStart(3, "0")}</td><td>${esc(t.kind)}</td>
+    <td>${esc(t.target_class)}</td><td>${clock(t.duration_s)}</td>
+    <td>${t.message_count}</td>
+    <td class="${t.mark === "bad" ? "bad" : "ok"}">${esc(t.mark ?? "")}</td>
+    <td class="${verdictClass(t.verdict)}">${t.verdict}</td></tr>`).join("");
+
+  const ratio = s.cued_s > 0 ? s.ambient_s / s.cued_s : 0;
+  const ok = ratio >= 1;
+  $("capratio").innerHTML = `cued ${clock(s.cued_s)} &nbsp; ambient ${clock(s.ambient_s)}
+    &nbsp; ratio <span class="${ok ? "ok" : "warn"}">${ratio.toFixed(2)}</span>
+    ${ok ? "" : '<span class="warn"> — ambient below parity; the false-positive rate needs it</span>'}`;
+  $("capcommand").textContent = message.command || "";
+  drawCapture(s);
+}
+
+function connect() {
+  const socket = new WebSocket(`ws://${location.host}/ws`);
+  socket.onopen = () => $("conn").innerHTML = '<span class="ok">● connected</span>';
+  socket.onclose = () => {
+    $("conn").innerHTML = '<span class="bad">● disconnected</span>';
+    setTimeout(connect, 1500);
+  };
+  socket.onmessage = (event) => renderCapture(JSON.parse(event.data));
+}
+
+/* ── annotate ───────────────────────────────────────────────────────────── */
+let corpusCache = null;
+async function loadAnnotateSessions() {
+  corpusCache = await api("/api/corpus");
+  const select = $("ann_session");
+  const previous = select.value;
+  select.innerHTML = corpusCache.sessions.map(s =>
+    `<option value="${esc(s.session_id)}">${esc(s.session_id)}</option>`).join("");
+  if (previous) select.value = previous;
+  populateTakes();
+}
+function populateTakes() {
+  const session = corpusCache?.sessions.find(s => s.session_id === $("ann_session").value);
+  $("ann_take").innerHTML = (session?.takes ?? []).map(t =>
+    `<option value="${t.number}">${String(t.number).padStart(3, "0")} · ${esc(t.kind)}</option>`).join("");
+  loadTake();
+}
+$("ann_session").addEventListener("change", populateTakes);
+$("ann_take").addEventListener("change", loadTake);
+$("ann_relabel").addEventListener("click", async () => {
+  const data = await api(`/api/session/${$("ann_session").value}/label`,
+    { method: $("ann_method").value });
+  $("ann_command").textContent = data.command;
+  loadTake();
+});
+
+let takeData = null;
+async function loadTake() {
+  const session = $("ann_session").value, number = $("ann_take").value;
+  if (!session || !number) return;
+  takeData = await api(`/api/session/${session}/take/${number}`);
+  $("ann_command").textContent =
+    `puara-creator label ${corpusPath}/${session} --method ${$("ann_method").value}`;
+  drawAnnotate();
+}
+
+function drawAnnotate() {
+  const canvas = $("anncanvas");
+  const ratio = window.devicePixelRatio || 1;
+  canvas.width = canvas.clientWidth * ratio; canvas.height = 220 * ratio;
+  const ctx = canvas.getContext("2d"); ctx.scale(ratio, ratio);
+  const width = canvas.clientWidth, height = 220;
+  const style = getComputedStyle(document.documentElement);
+  ctx.clearRect(0, 0, width, height);
+  if (!takeData || !takeData.envelope.length) {
+    $("annstats").innerHTML = '<span class="dim">no activity signal for this take</span>';
+    return;
+  }
+  const points = takeData.envelope;
+  const t0 = points[0][0], t1 = points[points.length - 1][0];
+  const peak = Math.max(...points.map(p => p[1])) || 1;
+  const X = (t) => ((t - t0) / Math.max(1e-9, t1 - t0)) * width;
+  const Y = (v) => height - 20 - (v / peak) * (height - 40);
+
+  for (const label of takeData.labels) {
+    ctx.fillStyle = style.getPropertyValue("--ok") + "33";
+    ctx.fillRect(X(label.t_on), 10, Math.max(2, X(label.t_off) - X(label.t_on)), height - 30);
+  }
+  ctx.strokeStyle = style.getPropertyValue("--warn"); ctx.lineWidth = 1;
+  for (const cue of takeData.cues) {
+    if (cue.count_in) ctx.setLineDash([3, 3]); else ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(X(cue.t), 6); ctx.lineTo(X(cue.t), height - 12); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.strokeStyle = style.getPropertyValue("--accent"); ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  points.forEach(([t, v], i) => i ? ctx.lineTo(X(t), Y(v)) : ctx.moveTo(X(t), Y(v)));
+  ctx.stroke();
+  ctx.fillStyle = style.getPropertyValue("--dim"); ctx.font = "10px monospace";
+  ctx.fillText(`${takeData.address ?? ""}  ${(t1 - t0).toFixed(1)} s`, 6, 13);
+
+  const cued = takeData.cues.filter(c => !c.count_in);
+  $("annstats").innerHTML = `${takeData.labels.length} labels · ${cued.length} armed cues ·
+    sources ${[...new Set(takeData.labels.map(l => l.source))].join(", ") || "none"}`;
+
+  const reactions = [];
+  for (const label of takeData.labels) {
+    let nearest = null;
+    for (const cue of cued) if (cue.t <= label.t_on && (!nearest || cue.t > nearest.t)) nearest = cue;
+    if (nearest) reactions.push((label.t_on - nearest.t) * 1000);
+  }
+  if (reactions.length) {
+    reactions.sort((a, b) => a - b);
+    const median = reactions[Math.floor(reactions.length / 2)];
+    const mean = reactions.reduce((a, b) => a + b, 0) / reactions.length;
+    const sd = Math.sqrt(reactions.reduce((a, b) => a + (b - mean) ** 2, 0) / reactions.length);
+    $("annreaction").innerHTML = `median <b>${median.toFixed(0)} ms</b> ·
+      sd ${sd.toFixed(0)} ms · min ${reactions[0].toFixed(0)} ·
+      max ${reactions[reactions.length - 1].toFixed(0)}
+      <div class="dim" style="margin-top:.3rem">This is the interval a label must not be
+      collapsed into its cue. A tight spread means the labels are consistent; a wide one
+      means the segmenter parameters do not suit this gesture.</div>`;
+  } else $("annreaction").textContent = "—";
+}
+
+/* ── corpus ─────────────────────────────────────────────────────────────── */
+async function loadCorpus() {
+  const data = await api("/api/corpus");
+  corpusCache = data;
+  if (data.empty) { $("coverage").innerHTML = ""; $("corpuswarn").textContent = "corpus is empty";
+    $("sessions").innerHTML = ""; return; }
+
+  $("coverage").innerHTML = `<tr><th>subject</th>${data.classes.map(c =>
+    `<th>${esc(c)}</th>`).join("")}<th>AMBIENT</th><th>split</th></tr>` +
+    data.subjects.map(s => {
+      const cued = data.classes.reduce((a, c) => a + (s.cued[c] || 0), 0);
+      const low = s.ambient < cued;
+      return `<tr><td>${esc(s.subject)}</td>` + data.classes.map(c =>
+        `<td>${s.cued[c] ? s.cued[c].toFixed(1) : "—"}</td>`).join("") +
+        `<td class="${low ? "warn" : ""}">${s.ambient.toFixed(1)}</td>
+         <td>${s.splits.map(x => x === "test" ? "test 🔒" : x).join(", ")}</td></tr>`;
+    }).join("");
+
+  $("corpuswarn").innerHTML = data.warnings.length
+    ? `<ul class="warnings">${data.warnings.map(w => `<li>${esc(w)}</li>`).join("")}</ul>`
+    : '<span class="ok">no warnings</span>';
+
+  $("sessions").innerHTML = `<tr><th>session</th><th>subject</th><th>split</th><th>takes</th>
+    <th>cued</th><th>ambient</th><th>labels</th></tr>` + data.sessions.map(s => `<tr>
+    <td class="clickable" data-open="${esc(s.session_id)}">${esc(s.session_id)}</td>
+    <td>${esc(s.subject)}</td><td>${esc(s.split)}</td><td>${s.takes.length}</td>
+    <td>${s.cued_s.toFixed(0)} s</td><td>${s.ambient_s.toFixed(0)} s</td>
+    <td class="${s.label_sources.length ? "" : "dim"}">${s.label_sources.join(", ") || "none"}</td>
+    </tr>`).join("");
+  document.querySelectorAll("[data-open]").forEach(cell =>
+    cell.addEventListener("click", () => {
+      show("annotate");
+      loadAnnotateSessions().then(() => { $("ann_session").value = cell.dataset.open; populateTakes(); });
+    }));
+}
+
+/* ── evaluate ───────────────────────────────────────────────────────────── */
+$("ev_run").addEventListener("click", async () => {
+  $("ev_status").textContent = "replaying the corpus at the descriptor…";
+  $("ev_run").disabled = true;
+  try {
+    const data = await api("/api/score", {
+      dut: $("ev_dut").value, listen: Number($("ev_listen").value),
+      gesture_class: $("ev_class").value, split: $("ev_split").value,
+      label_source: $("ev_labels").value, tolerance: Number($("ev_tol").value) / 1000,
+      warmup: Number($("ev_warmup").value), unlock_holdout: $("ev_unlock").checked,
+      dut_version: $("ev_version").value || null,
+    });
+    $("ev_command").textContent = data.command || "";
+    if (data.error) {
+      $("ev_status").innerHTML = `<span class="bad">${esc(data.error)}</span>`;
+      $("ev_results").innerHTML = ""; return;
+    }
+    $("ev_status").innerHTML = '<span class="ok">done</span>';
+    renderScore(data);
+  } catch (e) {
+    $("ev_status").innerHTML = `<span class="bad">${esc(e.message)}</span>`;
+  } finally { $("ev_run").disabled = false; }
+});
+
+function renderScore(data) {
+  const o = data.overall;
+  const subjects = Object.entries(data.per_subject);
+  const spread = data.recall_spread;
+  $("ev_results").innerHTML = `
+  <div class="panel">
+    <div class="big">${o.fp_per_min_ambient.toFixed(2)}</div>
+    <div class="dim">false positives per minute of ambient material — the headline.
+      ${o.ambient_minutes.toFixed(1)} min of ambient material in this split.</div>
+  </div>
+  <div class="panel"><div class="scroll"><table>
+    <tr><th>metric</th><th>value</th><th>note</th></tr>
+    <tr><td>recall</td><td>${o.recall.toFixed(3)}</td>
+        <td class="dim">${o.matched}/${o.references} instances</td></tr>
+    <tr><td>precision</td><td>${o.precision.toFixed(3)}</td>
+        <td class="dim">depends on corpus balance</td></tr>
+    <tr><td>latency p50</td><td>${o.latency_p50_ms} ms</td>
+        <td class="dim">corrected ${o.latency_p50_corrected_ms} ms</td></tr>
+    <tr><td>latency p95</td><td>${o.latency_p95_ms} ms</td>
+        <td class="dim">corrected ${o.latency_p95_corrected_ms} ms</td></tr>
+    <tr><td>onset jitter</td><td>${o.onset_jitter_ms} ms</td><td class="dim">sd</td></tr>
+    <tr><td>double fire</td><td>${(o.double_fire_rate * 100).toFixed(1)}%</td>
+        <td class="dim">extra fires within 500 ms</td></tr>
+  </table></div>
+  <div class="dim" style="margin-top:.5rem">transport ${
+    data.transport_rtt_ms ? `round trip p50 ${data.transport_rtt_ms.p50.toFixed(2)} ms`
+      : "unmeasured — the descriptor did not answer /pcr/ping"}</div>
+  </div>
+  <div class="panel"><h3>Per subject</h3><div class="scroll"><table>
+    <tr><th>subject</th><th>recall</th><th>FP/min</th><th>latency p50</th><th>instances</th></tr>
+    ${subjects.map(([name, r]) => `<tr><td>${esc(name)}</td><td>${r.recall.toFixed(3)}</td>
+      <td>${r.fp_per_min_ambient.toFixed(2)}</td><td>${r.latency_p50_ms} ms</td>
+      <td>${r.references}</td></tr>`).join("")}
+  </table></div>
+  <div class="${spread > 0.05 ? "warn" : "dim"}" style="margin-top:.5rem">
+    recall spread ${spread.toFixed(3)}${spread > 0.05
+      ? " — the pooled figure hides the weakest subject" : ""}</div></div>
+  ${data.failures.length ? `<div class="panel"><h3>Failures (${data.failures.length})</h3>
+  <div class="scroll"><table><tr><th>kind</th><th>session</th><th>take</th><th>t</th>
+  <th>detail</th></tr>${data.failures.slice(0, 40).map(f => `<tr>
+    <td class="${f.kind === "miss" ? "warn" : "bad"}">${esc(f.kind)}</td>
+    <td class="clickable" data-fail="${esc(f.session)}|${f.take}">${esc(f.session)}</td>
+    <td>${String(f.take).padStart(3, "0")}</td><td>${f.t.toFixed(3)}</td>
+    <td class="dim">${esc(f.detail)}</td></tr>`).join("")}</table></div></div>` : ""}
+  ${data.warnings.length ? `<div class="panel"><ul class="warnings">${
+    data.warnings.map(w => `<li>${esc(w)}</li>`).join("")}</ul></div>` : ""}
+  <div class="panel dim">test split consulted ${data.holdout_consultations ?? 0} time(s) —
+    report that number alongside any published figure.</div>`;
+
+  document.querySelectorAll("[data-fail]").forEach(cell =>
+    cell.addEventListener("click", () => {
+      const [session, take] = cell.dataset.fail.split("|");
+      show("annotate");
+      loadAnnotateSessions().then(() => {
+        $("ann_session").value = session; populateTakes();
+        $("ann_take").value = take; loadTake();
+      });
+    }));
+}
+
+/* ── boot ───────────────────────────────────────────────────────────────── */
+let corpusPath = "corpus";
+(async () => {
+  const meta = await api("/api/meta");
+  corpusPath = meta.corpus;
+  $("version").textContent = "v" + meta.version;
+  $("corpuspath").textContent = meta.corpus;
+  await refreshCommand();
+  connect();
+})();
+</script>
+</body>
+</html>
