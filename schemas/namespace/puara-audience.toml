@@ -8,9 +8,14 @@
 # alpha/beta/gamma order, not radians in x/y/z, and acceleration includes
 # gravity.
 #
-# sequence_field and timestamp_field are the argument indices added by the
-# `timestamps` toggle described in docs/PUARA_SERVER.md §2. They are ignored
-# when the toggle is off and the message arrives with the base arity.
+# sequence_field and timestamp_split are the argument indices added by the
+# `timestamps` toggle described in docs/PUARA_SERVER.md §2, and every per-device
+# address carries them while it is on. They are ignored when it is off and the
+# message arrives with the base arity, so one schema serves both.
+#
+# The timestamp is a pair — whole seconds, then microseconds within the second —
+# because node-osc cannot encode a 64-bit integer. The recorder combines them
+# into the single microsecond `dt` of docs/FORMAT.md §3.
 
 version = "0.4.0"
 source = "puara-server"
@@ -28,7 +33,7 @@ range = [-40.0, 40.0]
 rate_hz = 100
 gravity_included = true
 sequence_field = 3
-timestamp_field = 4
+timestamp_split = [4, 5]
 
 [[address]]
 address = "/puara/audience/*/gyro"
@@ -40,7 +45,7 @@ range = [-2000.0, 2000.0]
 rate_hz = 100
 axis_order = "alpha,beta,gamma"
 sequence_field = 3
-timestamp_field = 4
+timestamp_split = [4, 5]
 
 [[address]]
 address = "/puara/audience/*/orientation"
@@ -52,7 +57,7 @@ range = [-180.0, 360.0]
 rate_hz = 100
 axis_order = "alpha,beta,gamma"
 sequence_field = 3
-timestamp_field = 4
+timestamp_split = [4, 5]
 
 [[address]]
 address = "/puara/audience/*/touch"
@@ -63,6 +68,8 @@ range = [0.0, 1.0]
 rate_hz = 60
 notes = "Primary pointer only. Not sent between touches."
 event_rate = true
+sequence_field = 2
+timestamp_split = [3, 4]
 
 [[address]]
 address = "/puara/audience/*/touch/count"
@@ -70,6 +77,8 @@ role = "analog"
 units = "count"
 arity = 1
 event_rate = true
+sequence_field = 1
+timestamp_split = [2, 3]
 
 # ---- descriptors computed on the phone ---------------------------------------
 # Emitted only when the value changes, so a fixed-rate health check would read
@@ -82,6 +91,8 @@ units = "normalized"
 arity = 3
 event_rate = true
 notes = "Gravity-free acceleration energy per axis; exactly 0 when still."
+sequence_field = 3
+timestamp_split = [4, 5]
 
 [[address]]
 address = "/puara/audience/*/jab"
@@ -90,6 +101,8 @@ units = "m/s^2"
 arity = 3
 event_rate = true
 notes = "Latches the last detected span until another exceeds jabThreshold."
+sequence_field = 3
+timestamp_split = [4, 5]
 
 [[address]]
 address = "/puara/audience/*/brush"
@@ -97,6 +110,8 @@ role = "derived"
 units = "normalized"
 arity = 2
 event_rate = true
+sequence_field = 2
+timestamp_split = [3, 4]
 
 [[address]]
 address = "/puara/audience/*/rub"
@@ -104,6 +119,8 @@ role = "derived"
 units = "normalized"
 arity = 2
 event_rate = true
+sequence_field = 2
+timestamp_split = [3, 4]
 
 # ---- events ------------------------------------------------------------------
 
@@ -112,6 +129,8 @@ address = "/puara/audience/*/tap"
 role = "button"
 arity = 1
 event_rate = true
+sequence_field = 1
+timestamp_split = [2, 3]
 
 [[address]]
 address = "/puara/audience/*/region"
@@ -119,9 +138,13 @@ role = "analog"
 units = "index"
 arity = 1
 event_rate = true
+sequence_field = 1
+timestamp_split = [2, 3]
 
 [[address]]
 address = "/puara/audience/*/status"
 role = "button"
 arity = 1
 event_rate = true
+sequence_field = 1
+timestamp_split = [2, 3]

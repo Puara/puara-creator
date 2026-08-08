@@ -89,7 +89,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--timestamps",
         action="store_true",
-        help="Append per-sample sequence and microsecond timestamp, as the toggle would.",
+        help="Append the per-sample sequence and split sample time, as the toggle would.",
     )
     parser.add_argument(
         "--gesture-every",
@@ -180,7 +180,14 @@ def main() -> None:
 
         extra: list[float | int] = []
         if args.timestamps:
-            extra = [seq, int(now * 1_000_000)]
+            # Three trailing arguments, as puara-server sends them under
+            # `timestamps: bridge`: the counter, then the sample time split into whole
+            # seconds and microseconds within the second. The split is the bridge's,
+            # not ours — node-osc cannot encode a 64-bit integer, so a namespace that
+            # asked for one could not be implemented. See docs/PUARA_SERVER.md §2.
+            # The epoch is this process's start, mirroring the bridge's own.
+            sample_us = int((now - start) * 1_000_000)
+            extra = [seq, sample_us // 1_000_000, sample_us % 1_000_000]
 
         messages: list[tuple[str, list[float | int]]] = [
             (f"{prefix}/accel", [*accel, *extra]),

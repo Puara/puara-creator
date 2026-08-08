@@ -303,7 +303,7 @@ class Recorder:
         for message in messages:
             spec = self._spec_for(message.address)
             device_seq = _arg_at(message.args, spec.sequence_field if spec else None)
-            device_time = _arg_at(message.args, spec.timestamp_field if spec else None)
+            device_time = _device_time(message.args, spec)
 
             record: dict[str, Any] = {"t": t, "a": message.address, "v": message.args}
             if device_seq is not None:
@@ -341,6 +341,7 @@ class Recorder:
                         nominal_rate_hz=nominal,
                         event_rate=event_rate,
                         device_seq=seq_value,
+                        device_time=has_device_time,
                     )
                     continue
                 record["q"] = self._take_seq
@@ -351,6 +352,7 @@ class Recorder:
                     nominal_rate_hz=nominal,
                     event_rate=event_rate,
                     device_seq=seq_value,
+                    device_time=has_device_time,
                 )
                 take.writer.write(record)
 
@@ -421,6 +423,26 @@ def _arg_at(args: list[Any], index: int | None) -> int | None:
         return None
     value = args[index]
     return int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _device_time(args: list[Any], spec: AddressSpec | None) -> int | None:
+    """Device-side sample time in microseconds, however the sender chose to carry it.
+
+    One argument (`timestamp_field`) for a sender that can encode a 64-bit integer, or a
+    seconds/microseconds pair (`timestamp_split`) for `puara-server`, whose OSC library
+    cannot — see docs/PUARA_SERVER.md §2. Both reach `dt` as microseconds, so nothing
+    downstream has to know which arrived. A pair with only one half present is treated as
+    absent rather than as a timestamp of a fraction of a second.
+    """
+    if spec is None:
+        return None
+    if spec.timestamp_split is not None:
+        seconds = _arg_at(args, spec.timestamp_split[0])
+        micros = _arg_at(args, spec.timestamp_split[1])
+        if seconds is None or micros is None:
+            return None
+        return seconds * 1_000_000 + micros
+    return _arg_at(args, spec.timestamp_field)
 
 
 def probe_namespace(bind: str, port: int, seconds: float) -> NamespaceSchema:

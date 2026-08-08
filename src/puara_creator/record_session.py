@@ -285,21 +285,27 @@ def _summary(console: Console, session: Session, recorder: Recorder) -> None:
         )
     # From the takes rather than from the snapshot: by the time the summary runs, the
     # recorder is stopped and its live health tracker no longer holds the takes' counters.
+    # Per address rather than per session: a stream may be stamped while another is not,
+    # and it is the unstamped ones that lost their sample times.
     batched = sorted({a for take in session.takes for a in take.health.batched_addresses()})
-    if batched:
-        names = ", ".join(batched)
-        if snapshot.with_device_time:
-            console.print(
-                f"  [dim]arrivals are batched on {names}, but per-sample timestamps are "
-                f"present, so sample timing is recoverable from `dt`[/]"
-            )
-        else:
-            console.print(
-                f"  [yellow]arrivals on {names} are bursts on a sender's tick, and no "
-                f"per-sample timestamp is present: arrival times in this take are the "
-                f"tick, not the sample. Enable the timestamps toggle "
-                f"(docs/PUARA_SERVER.md §2) before measuring latency from it[/]"
-            )
+    unstamped = sorted(
+        {a for take in session.takes for a in take.health.batched_without_device_time()}
+    )
+    recoverable = [a for a in batched if a not in unstamped]
+    if recoverable:
+        names = ", ".join(recoverable)
+        console.print(
+            f"  [dim]arrivals are batched on {names}, but per-sample timestamps are "
+            f"present, so sample timing is recoverable from `dt`[/]"
+        )
+    if unstamped:
+        names = ", ".join(unstamped)
+        console.print(
+            f"  [yellow]arrivals on {names} are bursts on a sender's tick, and no "
+            f"per-sample timestamp is present: arrival times in this take are the "
+            f"tick, not the sample. Enable the timestamps toggle "
+            f"(docs/PUARA_SERVER.md §2) before measuring latency from it[/]"
+        )
     dropped = sum(t.socket_drops or 0 for t in session.takes)
     if dropped:
         console.print(

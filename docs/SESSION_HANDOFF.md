@@ -5,10 +5,12 @@ project up without re-deriving it. This file is the canonical state of the work;
 handoff written when the repository was documentation only.
 
 **Origin:** design conversation, 3 August 2026, in the `/media/Storage/Assistant` workspace.
-**Implementation:** 4 August 2026, in the same conversation.
+**Implementation:** 4 August 2026, in the same conversation; the `puara-server` prerequisite on
+5 August 2026.
 **Participants:** Edu Meneses; Claude Code (Opus 5).
 **State at handoff:** alpha. Every v1 command except `convert` works end to end; CI runs the whole
-loop on every push. What remains is a corpus recorded from real people.
+loop on every push; and `puara-server` can now stamp samples, so the timing in a recording is
+trustworthy. What remains is a corpus recorded from real people.
 
 ---
 
@@ -150,13 +152,15 @@ is not** — it raises `NotImplementedError`, and nothing depends on it.
 Verified behaviour worth trusting: replay reproduces a take with identical addresses and arguments
 and an inter-arrival error of 0.084 ms at the 95th percentile; the labeller recovers a synthetic
 performer's 210 ms reaction as 238 ms ± 20; the full loop against the threshold baseline reports
-recall 1.000 and 0.00 false positives per minute.
+recall 1.000 and 0.00 false positives per minute; and against a synthetic phone batching at 30 Hz
+with the timestamps toggle on, 861 samples arriving on 684 distinct arrival stamps are recovered as
+861 distinct sample times spaced 10.000 ms apart, median, against a nominal 100 Hz.
 
 ## 6. What this session learned the hard way
 
-Six bugs, every one of which produced a wrong or empty result *quietly*. All now have regression
-tests. The pattern is worth carrying forward: in this codebase, silence is the failure mode to
-design against.
+Seven bugs, every one of which produced a wrong, empty or unactionable result *quietly*. All now
+have regression tests. The pattern is worth carrying forward: in this codebase, silence is the
+failure mode to design against.
 
 1. **The reader dropped `.jsonl`** when deriving the data path from the metadata path, so every
    corpus loaded as empty and every downstream command did nothing at all. A missing data file is
@@ -177,6 +181,14 @@ design against.
    one lock.
 6. **OSC blobs are not JSON-encodable** and would have crashed the recorder mid-take. They are
    stored as base64 and restored on replay.
+
+7. **A warning that fired on every correct recording.** `inspect` reported that a take's arrivals
+   were batched and its latency figures untrustworthy *even when per-sample timestamps were
+   present* — which is every take the `timestamps` toggle produces. `SPEC_V1.md` §6.1 already said
+   the batching is harmless in that case, and the recorder's own summary said so; `inspect` and
+   `AddressHealth.verdict()` had simply never implemented it. This is the same failure as the other
+   six wearing different clothes: a warning nobody can act on is one the operator learns to skip,
+   and that is how the warning that matters gets missed.
 
 Two smaller ones: session identifiers collided within a second, which a scripted capture run does
 routinely; and an uncued ambient take never ended when running headless, which is why
@@ -213,21 +225,30 @@ None of these block work; each needs a decision from Edu.
 
 **In `/media/Storage/puara-server`** (`gesture-tester` branch), and blocking a trustworthy corpus
 
-4. **`timestamps: bridge` toggle.** The bridge flushes its OSC queue at `bridgeTick`, 30 Hz by
-   default, so arrival timestamps are quantised onto a 33 ms grid and sample order within a tick is
-   the queue's rather than the phone's. Stamping at enqueue costs one `process.hrtime.bigint()` call
-   and removes the whole error. The namespace bumps to 0.4.0; the toggle defaults off so shows are
-   unaffected. Full specification in `docs/PUARA_SERVER.md` §2.
+4. ~~**`timestamps: bridge` toggle.**~~ **Done**, on the `gesture-tester` branch: `enqueueDevice()`
+   in `src/clients/puara-bridge.js` stamps at enqueue, with a `timestamps` entry in
+   `config/puara.yaml`, the shared state and the dashboard, and the contract in that repository's
+   `docs/NAMESPACE.md`. The namespace is 0.4.0 and the toggle defaults off, so a show is unaffected.
+
+   One thing changed against the specification as written. The sample time is **two 32-bit
+   integers** — whole seconds, then microseconds within the second — not the single 64-bit `h` that
+   `PUARA_SERVER.md` §2 originally asked for, because `node-osc` cannot encode `h` and its `d`
+   narrows to a 32-bit float without saying so. The recorder combines the pair, so `dt` in the
+   corpus is still one microsecond count and `FORMAT.md` did not change. The schema field is
+   `timestamp_split`, and a schema declaring both it and `timestamp_field` is rejected when it
+   loads.
 5. **`/puara/cue` forwarding** so the phone can `navigator.vibrate()`. A haptic cue at the instrument
    is better than the T-Stick ever offered, and `PROTOCOL.md` §2 prefers it over a visual cue for a
-   measurable reason.
+   measurable reason. Larger than it sounds: the bridge is OSC-output-only today — it constructs
+   `node-osc` `Client`s and never a `Server` — so this needs an inbound listener, a player state
+   field, and a handler in `src/clients/player.js`.
 
 **With people**
 
 6. **The first real session.** Blocked on performers, phones and signed consent rather than on code.
-   Runbook: `docs/FIRST_SESSION.md`. Do 4 and 5 first if at all possible — recording without them is
-   not wasted, since the recorder detects and reports the batching, but the latency figures cannot
-   be trusted and the session cannot be redone once the performers have gone.
+   Runbook: `docs/FIRST_SESSION.md`. With 4 done, the remaining prerequisite is 5, and its fallback
+   — an audible cue — is usable, so nothing now blocks recording a corpus whose timing can be
+   trusted. The session still cannot be redone once the performers have gone.
 
 ## 9. Conventions to keep
 

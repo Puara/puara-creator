@@ -57,16 +57,22 @@ class AddressHealth:
     out_of_order: int = 0
     lost: int = 0
     malformed: int = 0
+    #: Whether any message on this address carried a device-side sample time. When it did,
+    #: batching is harmless — the sample times survive in `dt` — and SPEC_V1.md §6.1 says
+    #: to report it that way rather than warn.
+    device_time: bool = False
     _intervals: array[float] = field(default_factory=lambda: array("f"))
     _last_seq: int | None = None
 
-    def observe(self, t: float, device_seq: int | None = None) -> None:
+    def observe(self, t: float, device_seq: int | None = None, device_time: bool = False) -> None:
         if self.first_t is None:
             self.first_t = t
         elif self.last_t is not None:
             self._intervals.append(t - self.last_t)
         self.last_t = t
         self.count += 1
+        if device_time:
+            self.device_time = True
 
         if device_seq is not None:
             if self._last_seq is not None:
@@ -147,9 +153,11 @@ class AddressHealth:
         only sent when it changes looks like a dropout to a fixed-rate test.
         """
         checks: list[float] = []
-        if self.batched():
+        if self.batched() and not self.device_time:
             # Not a failure — the data is intact — but the timing is the sender's tick,
-            # so nothing measured from arrival times should be trusted.
+            # so nothing measured from arrival times should be trusted. With a per-sample
+            # device time the sample times survive in `dt` and there is nothing to warn
+            # about; SPEC_V1.md §6.1.
             checks.append(_WARN_FRACTION)
         if self.loss_rate:
             checks.append(self.loss_rate / MAX_LOSS_RATE)
@@ -194,6 +202,8 @@ class AddressHealth:
             out["event_rate"] = True
         if self.batched():
             out["batched"] = True
+        if self.device_time:
+            out["device_time"] = True
         if self.malformed:
             out["malformed"] = self.malformed
         return out
@@ -225,8 +235,9 @@ class HealthTracker:
         nominal_rate_hz: float | None = None,
         event_rate: bool = False,
         device_seq: int | None = None,
+        device_time: bool = False,
     ) -> None:
-        self.ensure(address, nominal_rate_hz, event_rate).observe(t, device_seq)
+        self.ensure(address, nominal_rate_hz, event_rate).observe(t, device_seq, device_time)
 
     @property
     def message_count(self) -> int:
@@ -235,6 +246,16 @@ class HealthTracker:
     def batched_addresses(self) -> list[str]:
         """Addresses whose arrivals are bursts on a sender's tick, not a steady stream."""
         return sorted(a for a, entry in self.addresses.items() if entry.batched())
+
+    def batched_without_device_time(self) -> list[str]:
+        """Batched addresses whose sample times were lost with the arrival times.
+
+        The ones that also carry a device time are batched but intact, which is what a
+        recording made with `timestamps: bridge` looks like — see SPEC_V1.md §6.1.
+        """
+        return sorted(
+            a for a, entry in self.addresses.items() if entry.batched() and not entry.device_time
+        )
 
     def verdict(self) -> Verdict:
         verdicts = [entry.verdict() for entry in self.addresses.values()]

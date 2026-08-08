@@ -14,7 +14,7 @@ from puara_creator import SCHEMA_VERSION
 from puara_creator.clock import ntp_to_unix_us
 from puara_creator.health import MAX_LOSS_RATE, AddressHealth, HealthTracker
 from puara_creator.jsonl import JsonlWriter, read_jsonl, write_json
-from puara_creator.namespace import SchemaInferrer, load_schema
+from puara_creator.namespace import SchemaInferrer, load_schema, load_specs_from_meta
 from puara_creator.oscparse import MalformedDatagramError, magnitude, parse
 
 SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schemas" / "namespace" / "puara-audience.toml"
@@ -33,7 +33,47 @@ def test_shipped_schema_loads_and_matches_device_addresses() -> None:
     assert accel.arity == 3
     assert accel.gravity_included is True
     assert accel.sequence_field == 3
-    assert accel.timestamp_field == 4
+    assert accel.timestamp_split == (4, 5)
+    assert accel.timestamp_field is None
+
+
+def test_shipped_schema_stamps_every_per_device_address() -> None:
+    """Under `timestamps: bridge` the bridge stamps every per-device message, not only
+    the raw streams. An address the schema forgets records no `ds` or `dt` at all, and
+    says nothing about it — so the schema has to cover the whole namespace."""
+    schema = load_schema(SCHEMA_PATH)
+    for spec in schema.specs:
+        assert spec.timestamp_split is not None, f"{spec.address} has no timestamp_split"
+        assert spec.sequence_field == spec.arity, spec.address
+        assert spec.timestamp_split == (spec.arity + 1, spec.arity + 2), spec.address
+
+
+def test_schema_rejects_both_timestamp_forms(tmp_path: Path) -> None:
+    """One argument or two, never ambiguous: read the microsecond word of a pair as a
+    whole timestamp and it is a sawtooth that resets every second, silently."""
+    path = tmp_path / "both.toml"
+    path.write_text(
+        '[[address]]\naddress = "/x/accel"\narity = 3\n'
+        "timestamp_field = 4\ntimestamp_split = [4, 5]\n"
+    )
+    with pytest.raises(ValueError, match="both timestamp_field and timestamp_split"):
+        load_schema(path)
+
+
+def test_schema_rejects_a_split_that_is_not_a_pair(tmp_path: Path) -> None:
+    path = tmp_path / "short.toml"
+    path.write_text('[[address]]\naddress = "/x/accel"\narity = 3\ntimestamp_split = [4]\n')
+    with pytest.raises(ValueError, match="exactly two"):
+        load_schema(path)
+
+
+def test_timestamp_split_survives_a_round_trip_through_meta() -> None:
+    """session.py writes the schema into meta.json and read.py reads it back. The two
+    used to build their AddressSpec separately, which is how a field goes missing."""
+    schema = load_schema(SCHEMA_PATH)
+    restored = load_specs_from_meta(schema.to_meta())
+    assert [s.timestamp_split for s in restored] == [s.timestamp_split for s in schema.specs]
+    assert [s.sequence_field for s in restored] == [s.sequence_field for s in schema.specs]
 
 
 def test_schema_marks_phone_descriptors_as_event_rate() -> None:
@@ -237,6 +277,32 @@ def test_bridge_style_batching_is_detected_and_warns() -> None:
     assert entry.rate_hz == pytest.approx(90.0, abs=5.0)
     assert entry.lost == 0
     assert entry.to_meta()["batched"] is True
+
+
+def test_batching_with_a_device_timestamp_is_reported_but_not_warned() -> None:
+    """SPEC_V1.md §6.1: batched arrivals whose messages carry a per-sample device time
+    have lost nothing — the sample times are in `dt`. This is what every take recorded
+    through `timestamps: bridge` looks like, so warning on it would train the operator
+    to ignore the warning that matters."""
+
+    def burst_into(entry: AddressHealth, *, device_time: bool) -> AddressHealth:
+        # 90 Hz delivered as three samples per 30 Hz tick: batched, but achieving its
+        # nominal rate, so the batching rule is the only thing the verdict can turn on.
+        for tick in range(60):
+            for burst_index in range(3):
+                entry.observe(tick / 30.0 + burst_index * 0.00005, device_time=device_time)
+        return entry
+
+    stamped = burst_into(AddressHealth("/x", nominal_rate_hz=90.0), device_time=True)
+    assert stamped.batched() is True
+    assert stamped.to_meta()["batched"] is True
+    assert stamped.to_meta()["device_time"] is True
+    assert stamped.verdict() == "pass"
+
+    # the same stream without the timestamps toggle has genuinely lost its sample times
+    unstamped = burst_into(AddressHealth("/x", nominal_rate_hz=90.0), device_time=False)
+    assert unstamped.verdict() == "warn"
+    assert "device_time" not in unstamped.to_meta()
 
 
 def test_a_steady_stream_is_not_reported_as_batched() -> None:

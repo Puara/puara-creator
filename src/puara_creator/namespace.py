@@ -59,8 +59,16 @@ class AddressSpec:
     axis_order: str | None = None
     #: Argument index carrying a device-side sequence number, when the source provides one.
     sequence_field: int | None = None
-    #: Argument index carrying a device-side timestamp in microseconds.
+    #: Argument index carrying a device-side timestamp in microseconds, in one argument.
     timestamp_field: int | None = None
+    #: Argument indices of a timestamp split across two, as `(seconds, microseconds)`.
+    #:
+    #: `puara-server` sends it this way because `node-osc` cannot encode a 64-bit
+    #: integer; a sender that can encode one uses `timestamp_field` instead. The two
+    #: are mutually exclusive, and `load_schema` rejects an address that declares both:
+    #: read one way when the sender meant the other, a microsecond field alone is a
+    #: sawtooth that resets every second, and nothing downstream would say so.
+    timestamp_split: tuple[int, int] | None = None
     notes: str | None = None
 
     def matches(self, address: str) -> bool:
@@ -69,11 +77,11 @@ class AddressSpec:
     def payload(self, args: list[Any]) -> list[float]:
         """The sensor values, without the metadata a sender may append after them.
 
-        `puara-server` appends a sequence number and a microsecond timestamp when its
-        `timestamps` toggle is on (docs/PUARA_SERVER.md §2). Those are numbers, and any
-        analysis that takes "all the numeric arguments" would let a microsecond count
-        dominate an acceleration by six orders of magnitude. `arity` is what says where
-        the sensor data stops.
+        `puara-server` appends a sequence number and a sample time when its `timestamps`
+        toggle is on (docs/PUARA_SERVER.md §2). Those are numbers, and any analysis that
+        takes "all the numeric arguments" would let a microsecond count dominate an
+        acceleration by six orders of magnitude. `arity` is what says where the sensor
+        data stops.
         """
         numeric = [
             float(v) for v in args if isinstance(v, (int, float)) and not isinstance(v, bool)
@@ -93,6 +101,7 @@ class AddressSpec:
             "axis_order": self.axis_order,
             "sequence_field": self.sequence_field,
             "timestamp_field": self.timestamp_field,
+            "timestamp_split": list(self.timestamp_split) if self.timestamp_split else None,
             "notes": self.notes,
         }
         out.update({k: v for k, v in optional.items() if v is not None})
@@ -127,29 +136,49 @@ class NamespaceSchema:
         return [s.address for s in self.specs if s.role == "unknown"]
 
 
+def _spec_from_entry(entry: dict[str, Any], origin: str) -> AddressSpec:
+    """One address entry, from TOML or from the `namespace` block of a meta.json.
+
+    Both callers go through here rather than each building an `AddressSpec` of their
+    own: a schema read back from a session must mean exactly what the schema written
+    into it meant, and two copies of this drift by one field without anything failing.
+    """
+    rng = entry.get("range")
+    split = entry.get("timestamp_split")
+    if split is not None:
+        if entry.get("timestamp_field") is not None:
+            raise ValueError(
+                f"{origin}: {entry['address']} declares both timestamp_field and "
+                "timestamp_split; the timestamp is either one argument or two"
+            )
+        if len(split) != 2:
+            raise ValueError(
+                f"{origin}: {entry['address']} timestamp_split needs exactly two "
+                f"indices, seconds then microseconds, got {list(split)}"
+            )
+
+    return AddressSpec(
+        address=entry["address"],
+        role=entry.get("role", "unknown"),
+        arity=int(entry.get("arity", 1)),
+        frame=entry.get("frame"),
+        units=entry.get("units"),
+        range=(float(rng[0]), float(rng[1])) if rng else None,
+        rate_hz=entry.get("rate_hz"),
+        event_rate=bool(entry.get("event_rate", False)),
+        gravity_included=entry.get("gravity_included"),
+        axis_order=entry.get("axis_order"),
+        sequence_field=entry.get("sequence_field"),
+        timestamp_field=entry.get("timestamp_field"),
+        timestamp_split=(int(split[0]), int(split[1])) if split is not None else None,
+        notes=entry.get("notes"),
+    )
+
+
 def load_schema(path: Path) -> NamespaceSchema:
     """Read a namespace schema from TOML. See schemas/namespace/puara-audience.toml."""
     raw = tomllib.loads(path.read_text())
-    specs: list[AddressSpec] = []
-    for entry in raw.get("address", []):
-        rng = entry.get("range")
-        specs.append(
-            AddressSpec(
-                address=entry["address"],
-                role=entry.get("role", "unknown"),
-                arity=int(entry.get("arity", 1)),
-                frame=entry.get("frame"),
-                units=entry.get("units"),
-                range=(float(rng[0]), float(rng[1])) if rng else None,
-                rate_hz=entry.get("rate_hz"),
-                event_rate=bool(entry.get("event_rate", False)),
-                gravity_included=entry.get("gravity_included"),
-                axis_order=entry.get("axis_order"),
-                sequence_field=entry.get("sequence_field"),
-                timestamp_field=entry.get("timestamp_field"),
-                notes=entry.get("notes"),
-            )
-        )
+    specs = [_spec_from_entry(entry, str(path)) for entry in raw.get("address", [])]
     if not specs:
         raise ValueError(f"{path}: no [[address]] entries")
     return NamespaceSchema(
@@ -163,27 +192,7 @@ def load_schema(path: Path) -> NamespaceSchema:
 
 def load_specs_from_meta(entries: list[dict[str, Any]]) -> list[AddressSpec]:
     """Rebuild specifications from the `namespace` block of a session's meta.json."""
-    specs = []
-    for entry in entries:
-        rng = entry.get("range")
-        specs.append(
-            AddressSpec(
-                address=entry["address"],
-                role=entry.get("role", "unknown"),
-                arity=int(entry.get("arity", 1)),
-                frame=entry.get("frame"),
-                units=entry.get("units"),
-                range=(float(rng[0]), float(rng[1])) if rng else None,
-                rate_hz=entry.get("rate_hz"),
-                event_rate=bool(entry.get("event_rate", False)),
-                gravity_included=entry.get("gravity_included"),
-                axis_order=entry.get("axis_order"),
-                sequence_field=entry.get("sequence_field"),
-                timestamp_field=entry.get("timestamp_field"),
-                notes=entry.get("notes"),
-            )
-        )
-    return specs
+    return [_spec_from_entry(entry, "meta.json") for entry in entries]
 
 
 class SchemaInferrer:

@@ -118,9 +118,17 @@
           },
           "timestamp_field": {
             "type": "integer",
-            "description": "Index into the argument list carrying a device timestamp in microseconds."
+            "description": "Index into the argument list carrying a device timestamp in microseconds, in one argument. Mutually exclusive with timestamp_split."
+          },
+          "timestamp_split": {
+            "type": "array",
+            "items": { "type": "integer" },
+            "minItems": 2,
+            "maxItems": 2,
+            "description": "Indices of a device timestamp split across two arguments, whole seconds then microseconds within the second, as puara-server sends it. Mutually exclusive with timestamp_field."
           }
-        }
+        },
+        "not": { "required": ["timestamp_field", "timestamp_split"] }
       }
     },
     "namespace_inferred": {

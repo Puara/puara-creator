@@ -11,6 +11,7 @@ from __future__ import annotations
 import itertools
 import socket
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -130,6 +131,81 @@ def test_take_records_arrival_order_sequence_and_device_fields(recorder: Any) ->
     assert records[5]["dt"] == 5_000
     assert records[0]["t"] < records[-1]["t"]
     assert "b" not in records[0]
+
+
+def split_timestamp_schema() -> NamespaceSchema:
+    """A sender shaped like puara-server under `timestamps: bridge`: three trailers,
+    with the sample time as a seconds/microseconds pair."""
+    return NamespaceSchema(
+        specs=[
+            AddressSpec(
+                address=f"{PREFIX}/accel",
+                role="acceleration",
+                arity=3,
+                rate_hz=100.0,
+                sequence_field=3,
+                timestamp_split=(4, 5),
+            )
+        ],
+        source="test",
+    )
+
+
+@contextmanager
+def recording(tmp_path: Path, schema: NamespaceSchema) -> Any:
+    """A started recorder and a client aimed at it, for a schema of the test's choosing."""
+    port = free_port()
+    session = make_session(tmp_path, schema=schema)
+    rec = Recorder(
+        session,
+        bind="127.0.0.1",
+        port=port,
+        schema=schema,
+        cue_config=CueConfig(interval_s=0.0, count_in=0, reps=3),
+        target_class="jab",
+    )
+    rec.start()
+    try:
+        yield rec, session, SimpleUDPClient("127.0.0.1", port)
+    finally:
+        rec.stop()
+        session.close()
+
+
+def test_take_combines_a_split_device_timestamp(tmp_path: Path) -> None:
+    """`puara-server` sends the sample time as seconds plus microseconds because its OSC
+    library cannot encode a 64-bit integer (docs/PUARA_SERVER.md §2). It has to reach the
+    take file as the single microsecond `dt` that FORMAT.md §3 specifies, or every reader
+    downstream would need to know which sender it came from."""
+    with recording(tmp_path, split_timestamp_schema()) as (rec, session, client):
+        rec.start_take("cued")
+        # The third crosses a second boundary: a reader that ignored the seconds word
+        # would put it 750 ms *before* the second rather than 250 ms after it.
+        for index, (seconds, micros) in enumerate([(7, 500_000), (7, 750_000), (8, 0)]):
+            client.send_message(f"{PREFIX}/accel", [0.0, 0.0, 0.0, index, seconds, micros])
+        drain(rec, 3)
+        rec.stop_take()
+
+    records = read_take(session, 1)
+    assert [r["dt"] for r in records] == [7_500_000, 7_750_000, 8_000_000]
+    assert [r["ds"] for r in records] == [0, 1, 2]
+
+
+def test_a_split_timestamp_is_absent_rather_than_wrong_when_the_toggle_is_off(
+    tmp_path: Path,
+) -> None:
+    """With `timestamps: off` the message arrives at its base arity and the split indices
+    point past the end. That must record no `dt`, not a fraction of a second."""
+    with recording(tmp_path, split_timestamp_schema()) as (rec, session, client):
+        rec.start_take("cued")
+        client.send_message(f"{PREFIX}/accel", [0.1, -9.8, 0.0])
+        # only the seconds word: half a pair is not a timestamp
+        client.send_message(f"{PREFIX}/accel", [0.1, -9.8, 0.0, 0, 7])
+        drain(rec, 2)
+        rec.stop_take()
+
+    records = read_take(session, 1)
+    assert all("dt" not in r for r in records)
 
 
 def test_messages_outside_a_take_are_not_written(recorder: Any) -> None:

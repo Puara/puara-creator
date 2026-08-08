@@ -35,38 +35,64 @@ the sample time in the message is.
 
 ## 2. The fix: a timestamp toggle on `puara-server`
 
-Add a `timestamps` option to `config/puara.yaml`, live-toggleable from the controller dashboard like
-`emitRaw` and `sensorRate`, with three values:
+A `timestamps` option in `config/puara.yaml`, live-toggleable from the controller dashboard like
+`emitRaw` and `sensorRate`. Level `bridge` is implemented; level `device` (§2.2) is not, and is
+absent from the option list rather than offered and broken:
 
 ```yaml
 # Attach per-sample sequence and timestamp to per-device messages. Off for
-# shows; `bridge` or `device` for gesture-design sessions with puara-creator.
+# shows; `bridge` for gesture-design sessions with puara-creator.
 #   off    — namespace 0.3.1 behaviour, nothing appended
 #   bridge — bridge stamps at enqueue: recovers the bridgeTick grid
-#   device — phone stamps at sample: recovers transit and browser scheduling too
 timestamps: off
 ```
 
-When enabled, each per-device message — raw streams and descriptors alike — carries two additional
-trailing arguments:
+When enabled, each per-device message — raw streams, descriptors, `tap` and `status` alike —
+carries three additional trailing arguments:
 
 | argument | type | meaning |
 | --- | --- | --- |
 | `seq` | `i` | Per-device, per-address sample counter, monotonic, wrapping at 2³¹ |
-| `t_us` | `h` | Sample time in microseconds on the server clock |
+| `t_s` | `i` | Whole seconds since the bridge started |
+| `t_us` | `i` | Microseconds within that second, 0–999999 |
 
-So `/puara/audience/3/accel fff` becomes `/puara/audience/3/accel fffih` while the toggle is on.
-This is a namespace change and requires a minor version bump to **0.4.0**, with the trailing
-arguments documented as present only under the toggle. Consumers that read a fixed arity break; the
-toggle defaults to `off` so that shows and the `main` branch are unaffected, and the risk is
-confined to sessions that deliberately opt in.
+So `/puara/audience/3/accel fff` becomes `/puara/audience/3/accel fffiii` while the toggle is on,
+and the sample time in microseconds is `t_s × 1000000 + t_us`. This is a namespace change and
+requires a minor version bump to **0.4.0**, with the trailing arguments documented as present only
+under the toggle. Consumers that read a fixed arity break; the toggle defaults to `off` so that
+shows and the `main` branch are unaffected, and the risk is confined to sessions that deliberately
+opt in.
 
-### 2.1 Level `bridge` — implement this first
+**Why the time is two arguments rather than one 64-bit `h`.** This specification originally asked
+for a single `h`, which is the obvious way to carry a microsecond count. It cannot be built:
+`node-osc`, which the bridge sends through, encodes `i f s b m N` only, and its `d` narrows to a
+32-bit float without reporting it — so a single argument is either impossible or lossy. Whole
+seconds plus microseconds within the second is exact in two 32-bit integers and does not wrap for
+sixty-eight years, and it needs no change to the library a live audience system depends on. The
+alternative considered and rejected was replacing `node-osc`, which would rewrite the transmit path
+of that system for the sake of a design-time toggle.
+
+**The epoch is the bridge's own start, not the Unix epoch.** The clock is
+`process.hrtime.bigint()`, which is monotonic. A wall clock can be stepped backwards by the Network
+Time Protocol mid-session, and a tool differencing two samples across the step would read a
+negative interval as a real measurement — a quiet wrong answer of exactly the kind this project
+keeps finding.
+
+**`seq` does not reset when a phone reconnects.** The bridge keys its counters by address and
+device indices are recycled, so a restarted counter would look to the recorder like a large
+reordering rather than an absence. The `status 0` and `status 1` messages bracket the gap.
+
+### 2.1 Level `bridge` — implemented
 
 The bridge already touches every sample: it enqueues one message per state update. Stamping at
 enqueue costs one `process.hrtime.bigint()` call and a counter per device and address, and it
 recovers the entire tick quantisation described in §1. It requires no change to the phone client, no
 clock synchronisation, and no new dependency.
+
+Stamping happens at enqueue and deliberately not at flush. The queue is drained by the `bridgeTick`
+timer, so a flush-time stamp would hand every message in a tick the same time and reproduce the
+33 ms grid inside the message — the error the toggle exists to remove, now carried in a field that
+looks authoritative.
 
 What it does not recover is the phone-to-server path: browser event scheduling, the soundworks state
 update, and Wi-Fi transit. Those remain in the measurement as an unknown but *common-mode* term —
@@ -74,8 +100,10 @@ the same for every sample from a given phone under stable conditions — which i
 descriptors against each other and for measuring onset jitter, though not for stating an absolute
 end-to-end latency.
 
-This is a small change to `src/clients/puara-bridge.js` and one entry in `config/puara.yaml`, and it
-is the whole prerequisite for starting to record.
+This was a small change to `src/clients/puara-bridge.js` and one entry in `config/puara.yaml`, and
+it was the whole prerequisite for starting to record. It is in `puara-server` on the
+`gesture-tester` branch: `enqueueDevice()` in the bridge, a `timestamps` entry in the configuration
+file, the shared state and the dashboard, and the contract in that repository's `docs/NAMESPACE.md`.
 
 ### 2.2 Level `device` — implement when absolute latency matters
 
@@ -95,7 +123,7 @@ and is interesting for the audience system too.
 
 ## 3. How `puara-creator` uses it
 
-The namespace schema declares which argument index carries the sequence and which carries the
+The namespace schema declares which argument index carries the sequence and which pair carries the
 timestamp:
 
 ```toml
@@ -107,13 +135,17 @@ units = "m/s^2"
 arity = 3
 gravity_included = true
 rate_hz = 100
-sequence_field = 3      # index into the argument list
-timestamp_field = 4
+sequence_field = 3        # index into the argument list
+timestamp_split = [4, 5]  # whole seconds, then microseconds within the second
 ```
 
-The recorder writes them to `ds` and `dt` in the take file, exactly as it would for a T-Stick that
-provided them; see [`FORMAT.md`](FORMAT.md) §3. The rest of the pipeline is unchanged, which is the
-point of having specified those fields before knowing which instrument would fill them.
+The recorder combines the pair and writes `ds` and `dt` to the take file, exactly as it would for a
+T-Stick that provided them; see [`FORMAT.md`](FORMAT.md) §3. `dt` is a single microsecond count
+whichever way it arrived, so nothing downstream has to know that this particular sender splits it.
+An instrument that can encode a 64-bit integer declares `timestamp_field` instead, and a schema
+that declares both is rejected when it is loaded rather than resolved by a rule nobody would
+remember. The rest of the pipeline is unchanged, which is the point of having specified those
+fields before knowing which instrument would fill them.
 
 When the toggle is off, `ds` and `dt` are absent, health reporting loses its loss and reordering
 counts, and every report states that latency figures include the bridge tick. The tool records
@@ -165,7 +197,7 @@ rather than an `oscdump` read side by side.
 
 | Item | Where | Blocking |
 | --- | --- | --- |
-| `timestamps: bridge` toggle, namespace 0.4.0 | `puara-server`, `puara-bridge.js` + `puara.yaml` | Blocks trustworthy timing. Does not block recording |
+| `timestamps: bridge` toggle, namespace 0.4.0 | `puara-server`, `puara-bridge.js` + `puara.yaml` | Done |
 | Haptic cue forwarding, `/puara/cue` | `puara-server`, bridge + player | Blocks the preferred cue modality; audible cue is the fallback |
 | `timestamps: device` with `@soundworks/plugin-sync` | `puara-server`, phone + bridge | Blocks absolute end-to-end latency and cross-device comparison only |
 | Namespace schema preset | `puara-creator`, shipped | Done |

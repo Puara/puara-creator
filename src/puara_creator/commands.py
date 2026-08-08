@@ -205,18 +205,22 @@ def _warnings(console: Console, sessions: list[SessionRead]) -> None:
                 f"[yellow]{session.session_id}: takes {failed} are health:fail and are excluded "
                 f"from scoring by default[/]"
             )
+        # Batched *and* carrying a per-sample device time is a recording made through the
+        # `timestamps: bridge` toggle: the arrival times are the sender's tick, but the
+        # sample times survive in `dt`, so there is nothing to warn about. SPEC_V1.md §6.1.
         batched = [
             t.number
             for t in session.takes
             if any(
-                entry.get("batched")
+                entry.get("batched") and not entry.get("device_time")
                 for entry in t.meta.get("health", {}).get("per_address", {}).values()
             )
         ]
         if batched:
             messages.append(
                 f"[yellow]{session.session_id}: takes {batched} arrived in bursts on a sender's "
-                f"tick — see docs/PUARA_SERVER.md §1 before measuring latency from them[/]"
+                f"tick with no per-sample timestamp — see docs/PUARA_SERVER.md §1 before "
+                f"measuring latency from them[/]"
             )
         dropped = sum(int(t.meta.get("socket_drops", 0) or 0) for t in session.takes)
         if dropped:
