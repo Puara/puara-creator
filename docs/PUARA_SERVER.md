@@ -172,13 +172,27 @@ latches its last value until the next one exceeds threshold. Both are correct be
 would look like dropouts to a health check that assumed a fixed rate; the schema marks these
 addresses as event-rate rather than periodic so that health reporting does not flag them.
 
-**The cue can be haptic, which resolves an open question in the protocol.**
+**The cue is haptic, which resolves an open question in the protocol.**
 [`PROTOCOL.md`](PROTOCOL.md) §2 prefers a cue delivered at the instrument over a visual one, because
 a visual cue adds display and eye-to-hand latency to the dominant error term. A phone has
-`navigator.vibrate()`, so the cue can be delivered as a buzz in the performer's hand, driven from
-the same server that is recording. This is better than what the T-Stick offers and it should be
-built as part of the same change: a `/puara/cue` message from `puara-creator` to the bridge,
-forwarded to a named device as a vibration.
+`navigator.vibrate()`, so the cue is delivered as a buzz in the performer's hand, driven from the
+same server that is recording. This is better than what the T-Stick offers.
+
+It is built. The bridge opens an inbound OSC port when `oscInput` is set in `config/puara.yaml` —
+absent by default, since a show has no reason to listen — and forwards `/puara/cue index armed`,
+which is what `puara-creator --cue-out` already sends, to every connected phone as a 40 ms
+vibration. Every phone rather than a named one: the recorder names no device, and a session with
+several performers is meant to cue them together. The cue bypasses the outbound `bridgeTick` queue,
+because holding the stimulus for up to a tick would put 0–33 ms of jitter into the reaction time
+being measured.
+
+Two limits are worth knowing before a session is planned around it. **iOS Safari implements no
+Vibration API**, so an iPhone cannot be cued haptically at all and needs the audible fallback; the
+modality is part of the latency being measured, so it should not vary within a subject. And **the
+motor drives the accelerometer**, so the buzz appears in the recording at the instant the label is
+anchored to. Forty milliseconds against a reaction time of 150–400 ms does not overlap the gesture,
+but it is a large energy spike near the start of the labelling window, and a run of reaction times
+near zero in the annotator means the segmenter locked onto it.
 
 **Multiple phones are multiple subjects, recorded simultaneously.** The namespace already indexes
 per device, so one session can capture five performers at once — which is the subject diversity that
@@ -198,7 +212,7 @@ rather than an `oscdump` read side by side.
 | Item | Where | Blocking |
 | --- | --- | --- |
 | `timestamps: bridge` toggle, namespace 0.4.0 | `puara-server`, `puara-bridge.js` + `puara.yaml` | Done |
-| Haptic cue forwarding, `/puara/cue` | `puara-server`, bridge + player | Blocks the preferred cue modality; audible cue is the fallback |
+| Haptic cue forwarding, `/puara/cue` | `puara-server`, bridge + player | Done. Not available on iOS Safari, which has no Vibration API |
 | `timestamps: device` with `@soundworks/plugin-sync` | `puara-server`, phone + bridge | Blocks absolute end-to-end latency and cross-device comparison only |
 | Namespace schema preset | `puara-creator`, shipped | Done |
 

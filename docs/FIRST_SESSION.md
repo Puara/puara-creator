@@ -17,18 +17,37 @@ hardest first target. A longer gesture — `shake`, or a sustained `brush` — w
 the pipeline under less labelling pressure. Recommendation: record both, and treat the
 longer one as the one that has to work.
 
-**Patch `puara-server`.** The `timestamps: bridge` toggle of
-[`PUARA_SERVER.md`](PUARA_SERVER.md) §2.1 is a small change to `puara-bridge.js` and one
-entry in `config/puara.yaml`. Without it, arrival times are the 30 Hz bridge tick rather
-than the phone's samples, and every latency figure from the session carries that error.
-The recorder will detect and report the batching, so the session is not wasted — but the
-fix costs an hour and the recording cannot be redone once the performers have gone.
+**Configure `puara-server`.** Both prerequisites are now built, on the `gesture-tester`
+branch; what remains is switching them on in `config/puara.yaml`. Set `timestamps: bridge`,
+or arrival times are the 30 Hz bridge tick rather than the phone's samples and every
+latency figure from the session carries that error. Uncomment the `oscInput` block so the
+bridge listens for cues. Neither is on by default, because neither belongs in a show.
 
-**Decide the cue modality.** `navigator.vibrate()` in the player client, driven by a
-`/puara/cue` message forwarded through the bridge, is the right answer and needs the same
-patch session. The fallback is an audible cue from the workstation, which is acceptable;
-a visual cue on the phone screen is not, because it adds display and eye-to-hand latency
-to the term that already dominates.
+Check both before anyone arrives: the bridge logs `timestamps: bridge` and
+`OSC input: 0.0.0.0:9001` at startup, and a take recorded through the toggle no longer
+reports batching in the session summary.
+
+**Decide the cue modality.** A haptic cue at the instrument is the right answer, and
+`--cue-out HOST:9001` now delivers it: the bridge buzzes every connected phone for 40 ms.
+An audible cue from the workstation is the acceptable fallback; a visual cue on the phone
+screen is not, because it adds display and eye-to-hand latency to the term that already
+dominates.
+
+Two constraints on that choice, both of which decide things before the session rather
+than during it:
+
+- **iPhones cannot be cued haptically.** iOS Safari implements no Vibration API, so an
+  iPhone performer needs the audible cue whatever the bridge sends. Do not mix modalities
+  within a subject — the modality is part of the latency being measured — and prefer not
+  to mix them within a session. If the room is half iPhones, use the audible cue for
+  everyone.
+- **The buzz is visible in the accelerometer.** The motor shakes the sensor being
+  recorded, at the instant the label is anchored to. It is 40 ms long and a gesture
+  follows a cue by 150–400 ms, so it does not overlap the gesture, but it is a large
+  energy spike at the start of the labelling window. Check the reaction times in the
+  annotator afterwards: a cluster near zero means the segmenter locked onto the cue
+  artefact rather than the gesture, which is the same failure a visual inspection of
+  §"Before anyone leaves" is looking for.
 
 **Prepare consent.** Movement recordings from a named performer are personal data. Have
 the form signed before recording and record only its reference in the metadata; see

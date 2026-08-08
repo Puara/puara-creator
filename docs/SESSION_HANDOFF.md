@@ -9,8 +9,9 @@ handoff written when the repository was documentation only.
 5 August 2026.
 **Participants:** Edu Meneses; Claude Code (Opus 5).
 **State at handoff:** alpha. Every v1 command except `convert` works end to end; CI runs the whole
-loop on every push; and `puara-server` can now stamp samples, so the timing in a recording is
-trustworthy. What remains is a corpus recorded from real people.
+loop on every push; and `puara-server` can now stamp samples and deliver a haptic cue, so the timing
+in a recording is trustworthy and the stimulus reaches the performer's hand. What remains is a
+corpus recorded from real people.
 
 ---
 
@@ -237,18 +238,26 @@ None of these block work; each needs a decision from Edu.
    corpus is still one microsecond count and `FORMAT.md` did not change. The schema field is
    `timestamp_split`, and a schema declaring both it and `timestamp_field` is rejected when it
    loads.
-5. **`/puara/cue` forwarding** so the phone can `navigator.vibrate()`. A haptic cue at the instrument
-   is better than the T-Stick ever offered, and `PROTOCOL.md` §2 prefers it over a visual cue for a
-   measurable reason. Larger than it sounds: the bridge is OSC-output-only today — it constructs
-   `node-osc` `Client`s and never a `Server` — so this needs an inbound listener, a player state
-   field, and a handler in `src/clients/player.js`.
+5. ~~**`/puara/cue` forwarding**~~ **Done.** The bridge was output-only — it constructed `node-osc`
+   `Client`s and never a `Server` — so this added an inbound listener behind a new `oscInput`
+   configuration block, a `cue` event on the `global` state, and a `navigator.vibrate()` handler in
+   `src/clients/player.js`. `--cue-out HOST:9001` now buzzes every connected phone for 40 ms. Off by
+   default: no port is opened unless `oscInput` is set.
+
+   Two limits found while building it, both of which decide things before a session rather than
+   during one. **iOS Safari implements no Vibration API**, so an iPhone cannot be cued haptically
+   and needs the audible fallback — and the modality is part of the latency being measured, so it
+   must not vary within a subject. **The motor drives the accelerometer**, so the buzz is in the
+   recording at the instant the label is anchored to; it does not overlap a gesture that follows by
+   150–400 ms, but it is a large energy spike near the start of the labelling window. Both are in
+   `FIRST_SESSION.md` §1.
 
 **With people**
 
 6. **The first real session.** Blocked on performers, phones and signed consent rather than on code.
-   Runbook: `docs/FIRST_SESSION.md`. With 4 done, the remaining prerequisite is 5, and its fallback
-   — an audible cue — is usable, so nothing now blocks recording a corpus whose timing can be
-   trusted. The session still cannot be redone once the performers have gone.
+   Runbook: `docs/FIRST_SESSION.md`. Both `puara-server` prerequisites are now built, so nothing in
+   either repository blocks it; what remains is to switch them on in `config/puara.yaml`, which is
+   the first item of the runbook. The session still cannot be redone once the performers have gone.
 
 ## 9. Conventions to keep
 
